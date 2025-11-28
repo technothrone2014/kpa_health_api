@@ -1,0 +1,11 @@
+CREATE LOGIN api_user WITH PASSWORD = 'Godlovesus2!';
+CREATE USER api_user FOR LOGIN api_user;
+ALTER ROLE db_datareader ADD MEMBER api_user;
+ALTER ROLE db_datawriter ADD MEMBER api_user;
+
+
+
+run test: npm run dev
+
+
+
