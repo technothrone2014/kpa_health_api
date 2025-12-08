@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import employeesRouter from "./routes/employees";
+import dataCorrectionRoutes from "./routes/dataCorrection";
 
 dotenv.config();
 
@@ -32,10 +33,13 @@ app.get("/", (_req, res) => {
  */
 app.use("/api/v1/employees", employeesRouter);
 
+app.use("/api/data-correction", dataCorrectionRoutes);
+
 /**
  * ❌ 404 handler
  */
 app.use((_req, res) => res.status(404).json({ message: "Route not found" }));
+
 
 /**
  * 💥 Global error handler
