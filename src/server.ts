@@ -1,58 +1,83 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import compression from "compression";
 import employeesRouter from "./routes/employees";
 import dataCorrectionRoutes from "./routes/dataCorrection";
+import analyticsRouter from "./routes/analytics";
+import { errorHandler } from "./middleware/errorHandler";
+import logger from "./utils/logger";
 
 dotenv.config();
 
 const app = express();
 
-/**
- * 🌍 CORS Configuration
- * Allow your frontend (local or deployed) to access the API
- */
+// Security middleware
+app.use(helmet());
+app.use(compression());
+
+// CORS Configuration
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "*", // e.g. http://localhost:5173 or your hosted frontend
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-/**
- * 🩺 Health check route
- */
+// Request logging
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.path}`);
+  next();
+});
+
+// Health check
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
 app.get("/", (_req, res) => {
-  res.send("🩺 KPA Health Intelligence API (TypeScript + ESM) is running...");
+  res.json({
+    name: "KPA Health Intelligence API",
+    version: "2.0.0",
+    status: "running",
+    endpoints: {
+      employees: "/api/v1/employees",
+      dataCorrection: "/api/data-correction",
+      analytics: "/api/v1/analytics",
+    },
+  });
 });
 
-/**
- * 👩‍⚕️ Employee routes (versioned for future-proofing)
- */
+// API Routes
 app.use("/api/v1/employees", employeesRouter);
-
 app.use("/api/data-correction", dataCorrectionRoutes);
+app.use("/api/v1/analytics", analyticsRouter);
 
-/**
- * ❌ 404 handler
- */
-app.use((_req, res) => res.status(404).json({ message: "Route not found" }));
-
-
-/**
- * 💥 Global error handler
- */
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  console.error("🔥 Server Error:", err);
-  res
-    .status(500)
-    .json({ message: "Internal Server Error", error: err.message });
+// 404 handler
+app.use((_req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+  });
 });
 
-/**
- * 🚀 Start server
- */
+// Global error handler
+app.use(errorHandler);
+
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`🚀 Server ready at http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  logger.info(`🚀 Server ready at http://localhost:${PORT}`);
+  logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+});
+
+export default app;
