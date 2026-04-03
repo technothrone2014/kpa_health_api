@@ -1,0 +1,37 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: kpa_health_db
+      POSTGRES_USER: kpa_user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "YourStrong!Password"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+
+  migration-tool:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    depends_on:
+      - postgres
+      - sqlserver
+    environment:
+      - PG_HOST=postgres
+      - SQL_HOST=sqlserver
+
+volumes:
+  postgres_data:
+  sqlserver_data:

@@ -1,0 +1,15 @@
+LOAD DATABASE
+     FROM mssql://sa:password@localhost:1433/ZoodeskDB
+     INTO postgresql://postgres:password@localhost:5432/kpa_health_db
+
+WITH include drop, create tables, create indexes, reset sequences,
+     workers = 8, concurrency = 1,
+     multiple readers per thread, rows per range = 50000
+
+SET maintenance_work_mem to '128MB',
+    work_mem to '12MB'
+
+CAST type datetime to timestamptz drop default drop not null using zero-dates-to-null,
+     type datetime2 to timestamptz drop default drop not null using zero-dates-to-null;
+
+ALTER SCHEMA 'dbo' RENAME TO 'public';
