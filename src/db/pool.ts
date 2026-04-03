@@ -1,3 +1,4 @@
+// kpa_health_api/src/db/pool.ts
 import sql from "mssql";
 import { Pool as PgPool } from "pg";
 import dotenv from "dotenv";
@@ -13,34 +14,35 @@ let dbSql: typeof sql | null = null;
 
 // PostgreSQL connection
 if (DB_TYPE === "postgresql") {
-  // Get the DATABASE_URL and ensure it has proper SSL parameters
-  let databaseUrl = process.env.DATABASE_URL;
+  // Get the DATABASE_URL
+  const databaseUrl = process.env.DATABASE_URL;
   
-  // If no sslmode in the URL, add it
-  if (databaseUrl && !databaseUrl.includes('sslmode=')) {
-    databaseUrl += (databaseUrl.includes('?') ? '&' : '?') + 'sslmode=require';
+  if (!databaseUrl) {
+    console.error("❌ DATABASE_URL environment variable is required for PostgreSQL connection");
+    throw new Error("DATABASE_URL is required");
   }
   
-  const pgConfig = {
+  // Create a connection pool with explicit SSL configuration
+  const pgPool = new PgPool({
     connectionString: databaseUrl,
     ssl: {
-      rejectUnauthorized: false,  // Accept self-signed certificates
+      rejectUnauthorized: false, // Accept self-signed certificates
     },
-  };
+    // Increase connection timeout for Render
+    connectionTimeoutMillis: 10000,
+  });
 
-  console.log("📌 Connecting to PostgreSQL with SSL enabled");
+  console.log("📌 Connecting to PostgreSQL with SSL enabled...");
   
-  const pgPool = new PgPool(pgConfig);
-
   poolPromise = pgPool
     .connect()
-    .then((pool) => {
+    .then((client) => {
       console.log("✅ Connected to PostgreSQL successfully!");
-      return pool;
+      return pgPool; // Return the pool, not the client
     })
     .catch((err) => {
       console.error("❌ PostgreSQL Connection Failed:", err.message);
-      console.error("Please check your DATABASE_URL environment variable");
+      console.error("Connection string:", databaseUrl.replace(/:[^:@]*@/, ':****@'));
       throw err;
     });
   
@@ -98,7 +100,6 @@ else {
     })
     .catch((err) => {
       console.error("❌ SQL Server Connection Failed:", err.message);
-      console.error("Please check your database configuration");
       throw err;
     });
   
