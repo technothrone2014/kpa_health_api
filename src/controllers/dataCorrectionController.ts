@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { poolPromise, sql } from "../db/pool";
+import { poolPromise, dbSql } from "../db/pool";
 
 /**
  * Correct StationId for Clients and Tallies
@@ -23,11 +23,11 @@ export const correctStationAssignments = async (req: Request, res: Response) => 
     // 🧩 Step 1: Update Tallies
     const request1 = transaction.request();
     await request1
-      .input("stationId", sql.Int, stationId)
-      .input("userId", sql.Int, userId)
-      .input("year", sql.Int, year)
-      .input("month", sql.Int, month)
-      .input("day", sql.Int, day)
+      .input("stationId", dbSql.Int, stationId)
+      .input("userId", dbSql.Int, userId)
+      .input("year", dbSql.Int, year)
+      .input("month", dbSql.Int, month)
+      .input("day", dbSql.Int, day)
       .query(`
         UPDATE Tallies
         SET StationId = @stationId
@@ -46,11 +46,11 @@ export const correctStationAssignments = async (req: Request, res: Response) => 
     // 🧩 Step 2: Update Clients related to affected Tallies
     const request2 = transaction.request();
     await request2
-      .input("stationId", sql.Int, stationId)
-      .input("userId", sql.Int, userId)
-      .input("year", sql.Int, year)
-      .input("month", sql.Int, month)
-      .input("day", sql.Int, day)
+      .input("stationId", dbSql.Int, stationId)
+      .input("userId", dbSql.Int, userId)
+      .input("year", dbSql.Int, year)
+      .input("month", dbSql.Int, month)
+      .input("day", dbSql.Int, day)
       .query(`
         UPDATE C
         SET C.StationId = @stationId

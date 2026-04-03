@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { poolPromise, sql } from '../db/pool';
+import { poolPromise, dbSql } from '../db/pool';
 
 // ==================== CLIENT SUMMARY ENDPOINTS ====================
 
@@ -35,8 +35,8 @@ export const getClientsPerCategory = async (req: Request, res: Response) => {
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -106,8 +106,8 @@ export const getClientsPerCategoryPerGender = async (req: Request, res: Response
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -179,8 +179,8 @@ export const getClientsPerCategoryPerStation = async (req: Request, res: Respons
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -225,8 +225,8 @@ export const getEmployeeBloodPressureResults = async (req: Request, res: Respons
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -269,8 +269,8 @@ export const getEmployeeBMIResults = async (req: Request, res: Response) => {
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -313,8 +313,8 @@ export const getEmployeeRandomBloodSugarResults = async (req: Request, res: Resp
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -357,8 +357,8 @@ export const getEmployeeBMDResults = async (req: Request, res: Response) => {
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -401,8 +401,8 @@ export const getEmployeeFBSResults = async (req: Request, res: Response) => {
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -445,8 +445,8 @@ export const getEmployeeHBA1CResults = async (req: Request, res: Response) => {
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -489,8 +489,8 @@ export const getEmployeeLipidProfileResults = async (req: Request, res: Response
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -533,8 +533,8 @@ export const getEmployeeMicroalbuminResults = async (req: Request, res: Response
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -577,8 +577,8 @@ export const getEmployeePSAResults = async (req: Request, res: Response) => {
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -646,8 +646,8 @@ export const getEmployeeHepatitisResults = async (req: Request, res: Response) =
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -692,8 +692,8 @@ export const getEmployeeBreastExamResults = async (req: Request, res: Response) 
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -736,8 +736,8 @@ export const getEmployeePAPSmearResults = async (req: Request, res: Response) =>
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -780,8 +780,8 @@ export const getEmployeeViaVilliResults = async (req: Request, res: Response) =>
     `;
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const result = await request.query(query);
     res.json(result.recordset);
@@ -835,8 +835,8 @@ export const getDashboardOverview = async (req: Request, res: Response) => {
     }
     
     const request = pool.request();
-    if (startDate) request.input('startDate', sql.Date, startDate);
-    if (endDate) request.input('endDate', sql.Date, endDate);
+    if (startDate) request.input('startDate', dbSql.Date, startDate);
+    if (endDate) request.input('endDate', dbSql.Date, endDate);
     
     const [clientsResult, talliesResult, categoryResult] = await Promise.all([
       request.query(clientsQuery),

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { poolPromise, sql } from "../db/pool";
+import { poolPromise, dbSql } from "../db/pool";
 
 /**
  * 🧩 GET all employees (clients)
@@ -50,7 +50,7 @@ export const getEmployeeById = async (req: Request, res: Response) => {
     const pool = await poolPromise;
     const result = await pool
       .request()
-      .input("Id", sql.Int, id)
+      .input("Id", dbSql.Int, id)
       .query("SELECT * FROM Clients WHERE Id = @Id AND Deleted = 0");
 
     if (result.recordset.length === 0)
@@ -85,20 +85,20 @@ export const createEmployee = async (req: Request, res: Response) => {
 
     const result = await pool
       .request()
-      .input("UserId", sql.Int, UserId)
-      .input("IDNumber", sql.NVarChar(20), IDNumber)
-      .input("FullName", sql.NVarChar(40), FullName)
-      .input("FirstName", sql.NVarChar(20), FirstName)
-      .input("LastName", sql.NVarChar(20), LastName)
-      .input("GenderId", sql.Int, GenderId)
-      .input("PhoneNumber", sql.NVarChar(20), PhoneNumber || null)
-      .input("CategoryId", sql.Int, CategoryId)
-      .input("StationId", sql.Int, StationId)
-      .input("PostedOn", sql.DateTime2, now)
-      .input("UpdatedOn", sql.DateTime2, now)
-      .input("Pinned", sql.Bit, 0)
-      .input("Status", sql.Bit, 1)
-      .input("Deleted", sql.Bit, 0)
+      .input("UserId", dbSql.Int, UserId)
+      .input("IDNumber", dbSql.NVarChar(20), IDNumber)
+      .input("FullName", dbSql.NVarChar(40), FullName)
+      .input("FirstName", dbSql.NVarChar(20), FirstName)
+      .input("LastName", dbSql.NVarChar(20), LastName)
+      .input("GenderId", dbSql.Int, GenderId)
+      .input("PhoneNumber", dbSql.NVarChar(20), PhoneNumber || null)
+      .input("CategoryId", dbSql.Int, CategoryId)
+      .input("StationId", dbSql.Int, StationId)
+      .input("PostedOn", dbSql.DateTime2, now)
+      .input("UpdatedOn", dbSql.DateTime2, now)
+      .input("Pinned", dbSql.Bit, 0)
+      .input("Status", dbSql.Bit, 1)
+      .input("Deleted", dbSql.Bit, 0)
       .query(`
         INSERT INTO Clients 
         (UserId, IDNumber, FullName, FirstName, LastName, GenderId, PhoneNumber, CategoryId, StationId, PostedOn, UpdatedOn, Pinned, Status, Deleted)
@@ -140,17 +140,17 @@ export const updateEmployee = async (req: Request, res: Response) => {
 
     const result = await pool
       .request()
-      .input("Id", sql.Int, id)
-      .input("IDNumber", sql.NVarChar(20), IDNumber)
-      .input("FullName", sql.NVarChar(40), FullName)
-      .input("FirstName", sql.NVarChar(20), FirstName)
-      .input("LastName", sql.NVarChar(20), LastName)
-      .input("GenderId", sql.Int, GenderId)
-      .input("PhoneNumber", sql.NVarChar(20), PhoneNumber || null)
-      .input("CategoryId", sql.Int, CategoryId)
-      .input("StationId", sql.Int, StationId)
-      .input("UpdatedOn", sql.DateTime2, now)
-      .input("Status", sql.Bit, Status ?? 1)
+      .input("Id", dbSql.Int, id)
+      .input("IDNumber", dbSql.NVarChar(20), IDNumber)
+      .input("FullName", dbSql.NVarChar(40), FullName)
+      .input("FirstName", dbSql.NVarChar(20), FirstName)
+      .input("LastName", dbSql.NVarChar(20), LastName)
+      .input("GenderId", dbSql.Int, GenderId)
+      .input("PhoneNumber", dbSql.NVarChar(20), PhoneNumber || null)
+      .input("CategoryId", dbSql.Int, CategoryId)
+      .input("StationId", dbSql.Int, StationId)
+      .input("UpdatedOn", dbSql.DateTime2, now)
+      .input("Status", dbSql.Bit, Status ?? 1)
       .query(`
         UPDATE Clients
         SET 
@@ -187,7 +187,7 @@ export const deleteEmployee = async (req: Request, res: Response) => {
     const pool = await poolPromise;
     const result = await pool
       .request()
-      .input("Id", sql.Int, id)
+      .input("Id", dbSql.Int, id)
       .query(`
         UPDATE Clients
         SET Deleted = 1
