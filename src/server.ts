@@ -86,9 +86,11 @@ app.get("/api/test", (_req: Request, res: Response) => {
 // Global error handler
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  logger.info(`🚀 Server ready at http://localhost:${PORT}`);
+// Convert PORT to number and ensure it's valid
+const PORT: number = parseInt(process.env.PORT || "8080", 10);
+
+app.listen(PORT, '0.0.0.0', () => {
+  logger.info(`🚀 Server ready at http://0.0.0.0:${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
 });
 
