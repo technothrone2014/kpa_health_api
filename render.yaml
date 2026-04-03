@@ -4,22 +4,14 @@ services:
     name: kpa-health-api
     runtime: node
     plan: free
-    buildCommand: npm install
-    startCommand: npm run dev
+    buildCommand: npm install && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: "8080"
-      - key: DB_HOST
+      - key: DB_TYPE
+        value: "postgresql"
+      - key: DATABASE_URL
         sync: false
-      - key: DB_PORT
-        sync: false
-      - key: DB_NAME
-        sync: false
-      - key: DB_USER
-        sync: false
-      - key: DB_PASSWORD
-        sync: false
-      - key: DB_TRUSTED_CONNECTION
-        value: "false"
