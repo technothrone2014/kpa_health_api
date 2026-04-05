@@ -32,9 +32,9 @@ export const getClientsPerCategory = async (req: Request, res: Response) => {
       JOIN "Clients" c ON t."ClientId" = c."Id"
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       WHERE cat."Title" IN ('EMPLOYEE', 'DEPENDENT', 'PORT USER')
-        AND t."Deleted" = 0
-        AND c."Deleted" = 0
-        AND cat."Deleted" = 0
+        AND t."Deleted" = false
+        AND c."Deleted" = false
+        AND cat."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -79,10 +79,10 @@ export const getClientsPerCategoryPerGender = async (req: Request, res: Response
       JOIN "Genders" sex ON c."GenderId" = sex."Id"
       WHERE cat."Title" IN ('EMPLOYEE', 'DEPENDENT', 'PORT USER')
         AND sex."Title" IN ('Male', 'Female')
-        AND t."Deleted" = 0
-        AND c."Deleted" = 0
-        AND cat."Deleted" = 0
-        AND sex."Deleted" = 0
+        AND t."Deleted" = false
+        AND c."Deleted" = false
+        AND cat."Deleted" = false
+        AND sex."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -110,10 +110,10 @@ export const getClientsPerCategoryPerGender = async (req: Request, res: Response
       JOIN "Genders" sex ON c."GenderId" = sex."Id"
       WHERE cat."Title" IN ('EMPLOYEE', 'DEPENDENT', 'PORT USER')
         AND sex."Title" IN ('Male', 'Female')
-        AND t."Deleted" = 0
-        AND c."Deleted" = 0
-        AND cat."Deleted" = 0
-        AND sex."Deleted" = 0
+        AND t."Deleted" = false
+        AND c."Deleted" = false
+        AND cat."Deleted" = false
+        AND sex."Deleted" = false
     `;
     
     const result = await pool.query(query, params);
@@ -142,10 +142,10 @@ export const getClientsPerCategoryPerStation = async (req: Request, res: Respons
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "Stations" stat ON c."StationId" = stat."Id"
       WHERE cat."Title" IN ('EMPLOYEE', 'DEPENDENT', 'PORT USER')
-        AND t."Deleted" = 0
-        AND c."Deleted" = 0
-        AND stat."Deleted" = 0
-        AND cat."Deleted" = 0
+        AND t."Deleted" = false
+        AND c."Deleted" = false
+        AND stat."Deleted" = false
+        AND cat."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -173,7 +173,7 @@ export const getClientsPerCategoryPerStation = async (req: Request, res: Respons
 
 // ==================== EMPLOYEE HEALTH METRICS ENDPOINTS ====================
 
-// Generic function for health metrics
+// Helper function for health metrics with proper boolean handling
 const getHealthMetrics = async (req: Request, res: Response, valueColumn: string, valueTable: string, joinCondition: string) => {
   try {
     const pool = await poolPromise;
@@ -188,9 +188,9 @@ const getHealthMetrics = async (req: Request, res: Response, valueColumn: string
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "${valueTable}" v ON t."${joinCondition}" = v."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND t."Deleted" = 0
-        AND c."Deleted" = 0
-        AND v."Deleted" = 0
+        AND t."Deleted" = false
+        AND c."Deleted" = false
+        AND v."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -246,9 +246,9 @@ export const getEmployeeBMDResults = async (req: Request, res: Response) => {
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "BMDINTValues" b ON f."BMDINTValueId" = b."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND f."Deleted" = 0
-        AND c."Deleted" = 0
-        AND b."Deleted" = 0
+        AND f."Deleted" = false
+        AND c."Deleted" = false
+        AND b."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -289,9 +289,9 @@ export const getEmployeeFBSResults = async (req: Request, res: Response) => {
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "FBSINTValues" fbs ON f."FBSINTValueId" = fbs."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND f."Deleted" = 0
-        AND c."Deleted" = 0
-        AND fbs."Deleted" = 0
+        AND f."Deleted" = false
+        AND c."Deleted" = false
+        AND fbs."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -332,9 +332,9 @@ export const getEmployeeHBA1CResults = async (req: Request, res: Response) => {
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "HBA1CINTValues" h ON f."HBA1CINTValueId" = h."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND f."Deleted" = 0
-        AND c."Deleted" = 0
-        AND h."Deleted" = 0
+        AND f."Deleted" = false
+        AND c."Deleted" = false
+        AND h."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -375,9 +375,9 @@ export const getEmployeeLipidProfileResults = async (req: Request, res: Response
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "Lipids" l ON f."LipidId" = l."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND f."Deleted" = 0
-        AND c."Deleted" = 0
-        AND l."Deleted" = 0
+        AND f."Deleted" = false
+        AND c."Deleted" = false
+        AND l."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -420,9 +420,9 @@ export const getEmployeeMicroalbuminResults = async (req: Request, res: Response
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "MicroalbuminINTValues" m ON f."MicroalbuminINTValueId" = m."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND f."Deleted" = 0
-        AND c."Deleted" = 0
-        AND m."Deleted" = 0
+        AND f."Deleted" = false
+        AND c."Deleted" = false
+        AND m."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -463,9 +463,9 @@ export const getEmployeePSAResults = async (req: Request, res: Response) => {
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "PSAINTValues" psa ON f."PSAINTValueId" = psa."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND f."Deleted" = 0
-        AND c."Deleted" = 0
-        AND psa."Deleted" = 0
+        AND f."Deleted" = false
+        AND c."Deleted" = false
+        AND psa."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -508,9 +508,9 @@ export const getEmployeeHepatitisResults = async (req: Request, res: Response) =
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "HepatitisBValues" hb ON f."HepatitisBValueId" = hb."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND f."Deleted" = 0
-        AND c."Deleted" = 0
-        AND hb."Deleted" = 0
+        AND f."Deleted" = false
+        AND c."Deleted" = false
+        AND hb."Deleted" = false
     `;
     
     // Hepatitis C query
@@ -524,9 +524,9 @@ export const getEmployeeHepatitisResults = async (req: Request, res: Response) =
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "HepatitisCValues" hc ON f."HepatitisCValueId" = hc."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND f."Deleted" = 0
-        AND c."Deleted" = 0
-        AND hc."Deleted" = 0
+        AND f."Deleted" = false
+        AND c."Deleted" = false
+        AND hc."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -581,9 +581,9 @@ export const getEmployeeBreastExamResults = async (req: Request, res: Response) 
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "BreastExams" be ON o."BreastExamId" = be."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND o."Deleted" = 0
-        AND c."Deleted" = 0
-        AND be."Deleted" = 0
+        AND o."Deleted" = false
+        AND c."Deleted" = false
+        AND be."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -624,9 +624,9 @@ export const getEmployeePAPSmearResults = async (req: Request, res: Response) =>
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "PAPSmears" pap ON o."PAPSmearId" = pap."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND o."Deleted" = 0
-        AND c."Deleted" = 0
-        AND pap."Deleted" = 0
+        AND o."Deleted" = false
+        AND c."Deleted" = false
+        AND pap."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -667,9 +667,9 @@ export const getEmployeeViaVilliResults = async (req: Request, res: Response) =>
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "ViaVillies" vv ON o."ViaVilliId" = vv."Id"
       WHERE cat."Title" = 'EMPLOYEE'
-        AND o."Deleted" = 0
-        AND c."Deleted" = 0
-        AND vv."Deleted" = 0
+        AND o."Deleted" = false
+        AND c."Deleted" = false
+        AND vv."Deleted" = false
     `;
     
     const params: any[] = [];
@@ -706,14 +706,14 @@ export const getDashboardOverview = async (req: Request, res: Response) => {
       SELECT COUNT(DISTINCT c."Id") AS "TotalClients"
       FROM "Tallies" t
       JOIN "Clients" c ON t."ClientId" = c."Id"
-      WHERE t."Deleted" = 0 AND c."Deleted" = 0
+      WHERE t."Deleted" = false AND c."Deleted" = false
     `;
     
     // Get total tallies (visits)
     let talliesQuery = `
       SELECT COUNT("Id") AS "TotalVisits"
       FROM "Tallies"
-      WHERE "Deleted" = 0
+      WHERE "Deleted" = false
     `;
     
     // Get category distribution
@@ -723,7 +723,7 @@ export const getDashboardOverview = async (req: Request, res: Response) => {
       JOIN "Clients" c ON t."ClientId" = c."Id"
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       WHERE cat."Title" IN ('EMPLOYEE', 'DEPENDENT', 'PORT USER')
-        AND t."Deleted" = 0 AND c."Deleted" = 0 AND cat."Deleted" = 0
+        AND t."Deleted" = false AND c."Deleted" = false AND cat."Deleted" = false
       GROUP BY cat."Title"
     `;
     

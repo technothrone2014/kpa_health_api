@@ -31,7 +31,7 @@ export const getAllEmployees = async (_req: Request, res: Response) => {
       LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
       LEFT JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       LEFT JOIN "Stations" s ON c."StationId" = s."Id"
-      WHERE c."Deleted" = 0
+      WHERE c."Deleted" = false
       ORDER BY c."Id" DESC;
     `);
     res.status(200).json(result.rows);
@@ -49,7 +49,7 @@ export const getEmployeeById = async (req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
     const result = await pool.query(
-      'SELECT * FROM "Clients" WHERE "Id" = $1 AND "Deleted" = 0',
+      'SELECT * FROM "Clients" WHERE "Id" = $1 AND "Deleted" = false',
       [id]
     );
 
@@ -96,9 +96,9 @@ export const createEmployee = async (req: Request, res: Response) => {
       [
         UserId, IDNumber, FullName, FirstName, LastName, GenderId,
         PhoneNumber || null, CategoryId, StationId, now, now,
-        0,  // Pinned
-        1,  // Status
-        0   // Deleted
+        false,  // Pinned (boolean)
+        true,   // Status (boolean - active)
+        false   // Deleted (boolean)
       ]
     );
 
@@ -133,6 +133,9 @@ export const updateEmployee = async (req: Request, res: Response) => {
     const pool = await poolPromise;
     const now = new Date();
 
+    // Convert Status to boolean if provided
+    const statusBoolean = Status !== undefined ? (Status === true || Status === 1 || Status === '1' || Status === 'true') : true;
+
     const result = await pool.query(
       `
         UPDATE "Clients"
@@ -147,12 +150,12 @@ export const updateEmployee = async (req: Request, res: Response) => {
           "StationId" = $8,
           "UpdatedOn" = $9,
           "Status" = $10
-        WHERE "Id" = $11 AND "Deleted" = 0
+        WHERE "Id" = $11 AND "Deleted" = false
       `,
       [
         IDNumber, FullName, FirstName, LastName, GenderId,
         PhoneNumber || null, CategoryId, StationId, now,
-        Status !== undefined ? Status : 1,
+        statusBoolean,
         id
       ]
     );
@@ -176,7 +179,7 @@ export const deleteEmployee = async (req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
     const result = await pool.query(
-      'UPDATE "Clients" SET "Deleted" = 1 WHERE "Id" = $1',
+      'UPDATE "Clients" SET "Deleted" = true WHERE "Id" = $1',
       [id]
     );
 
