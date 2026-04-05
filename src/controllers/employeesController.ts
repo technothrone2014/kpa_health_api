@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { poolPromise, dbSql } from "../db/pool";
+import { poolPromise } from "../db/pool";
 
 /**
  * 🧩 GET all employees (clients)
@@ -7,34 +7,34 @@ import { poolPromise, dbSql } from "../db/pool";
 export const getAllEmployees = async (_req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
-    const result = await pool.request().query(`
+    const result = await pool.query(`
       SELECT 
-        c.Id,
-        c.UserId,
-        c.IDNumber,
-        c.FullName,
-        c.FirstName,
-        c.LastName,
-        c.GenderId,
-        g.Title AS GenderTitle,
-        c.PhoneNumber,
-        c.CategoryId,
-        cat.Title AS CategoryTitle,
-        c.StationId,
-        s.Title AS StationTitle,
-        c.PostedOn,
-        c.UpdatedOn,
-        c.Pinned,
-        c.Status,
-        c.Deleted
-      FROM Clients c
-      LEFT JOIN Genders g ON c.GenderId = g.Id
-      LEFT JOIN Categories cat ON c.CategoryId = cat.Id
-      LEFT JOIN Stations s ON c.StationId = s.Id
-      WHERE c.Deleted = 0
-      ORDER BY c.Id DESC;
+        c."Id",
+        c."UserId",
+        c."IDNumber",
+        c."FullName",
+        c."FirstName",
+        c."LastName",
+        c."GenderId",
+        g."Title" AS "GenderTitle",
+        c."PhoneNumber",
+        c."CategoryId",
+        cat."Title" AS "CategoryTitle",
+        c."StationId",
+        s."Title" AS "StationTitle",
+        c."PostedOn",
+        c."UpdatedOn",
+        c."Pinned",
+        c."Status",
+        c."Deleted"
+      FROM "Clients" c
+      LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
+      LEFT JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+      WHERE c."Deleted" = 0
+      ORDER BY c."Id" DESC;
     `);
-    res.status(200).json(result.recordset);
+    res.status(200).json(result.rows);
   } catch (err) {
     console.error("Error fetching employees:", err);
     res.status(500).json({ message: "Error fetching employees", error: err });
@@ -48,15 +48,15 @@ export const getEmployeeById = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const pool = await poolPromise;
-    const result = await pool
-      .request()
-      .input("Id", dbSql.Int, id)
-      .query("SELECT * FROM Clients WHERE Id = @Id AND Deleted = 0");
+    const result = await pool.query(
+      'SELECT * FROM "Clients" WHERE "Id" = $1 AND "Deleted" = 0',
+      [id]
+    );
 
-    if (result.recordset.length === 0)
+    if (result.rows.length === 0)
       return res.status(404).json({ message: "Employee not found" });
 
-    res.status(200).json(result.recordset[0]);
+    res.status(200).json(result.rows[0]);
   } catch (err) {
     console.error("Error fetching employee:", err);
     res.status(500).json({ message: "Error fetching employee", error: err });
@@ -83,33 +83,28 @@ export const createEmployee = async (req: Request, res: Response) => {
     const pool = await poolPromise;
     const now = new Date();
 
-    const result = await pool
-      .request()
-      .input("UserId", dbSql.Int, UserId)
-      .input("IDNumber", dbSql.NVarChar(20), IDNumber)
-      .input("FullName", dbSql.NVarChar(40), FullName)
-      .input("FirstName", dbSql.NVarChar(20), FirstName)
-      .input("LastName", dbSql.NVarChar(20), LastName)
-      .input("GenderId", dbSql.Int, GenderId)
-      .input("PhoneNumber", dbSql.NVarChar(20), PhoneNumber || null)
-      .input("CategoryId", dbSql.Int, CategoryId)
-      .input("StationId", dbSql.Int, StationId)
-      .input("PostedOn", dbSql.DateTime2, now)
-      .input("UpdatedOn", dbSql.DateTime2, now)
-      .input("Pinned", dbSql.Bit, 0)
-      .input("Status", dbSql.Bit, 1)
-      .input("Deleted", dbSql.Bit, 0)
-      .query(`
-        INSERT INTO Clients 
-        (UserId, IDNumber, FullName, FirstName, LastName, GenderId, PhoneNumber, CategoryId, StationId, PostedOn, UpdatedOn, Pinned, Status, Deleted)
+    const result = await pool.query(
+      `
+        INSERT INTO "Clients" 
+        ("UserId", "IDNumber", "FullName", "FirstName", "LastName", "GenderId", 
+         "PhoneNumber", "CategoryId", "StationId", "PostedOn", "UpdatedOn", 
+         "Pinned", "Status", "Deleted")
         VALUES 
-        (@UserId, @IDNumber, @FullName, @FirstName, @LastName, @GenderId, @PhoneNumber, @CategoryId, @StationId, @PostedOn, @UpdatedOn, @Pinned, @Status, @Deleted);
-        SELECT SCOPE_IDENTITY() AS Id;
-      `);
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        RETURNING "Id"
+      `,
+      [
+        UserId, IDNumber, FullName, FirstName, LastName, GenderId,
+        PhoneNumber || null, CategoryId, StationId, now, now,
+        0,  // Pinned
+        1,  // Status
+        0   // Deleted
+      ]
+    );
 
     res.status(201).json({
       message: "Employee created successfully",
-      Id: result.recordset[0].Id,
+      Id: result.rows[0].Id,
     });
   } catch (err) {
     console.error("Error creating employee:", err);
@@ -138,36 +133,31 @@ export const updateEmployee = async (req: Request, res: Response) => {
     const pool = await poolPromise;
     const now = new Date();
 
-    const result = await pool
-      .request()
-      .input("Id", dbSql.Int, id)
-      .input("IDNumber", dbSql.NVarChar(20), IDNumber)
-      .input("FullName", dbSql.NVarChar(40), FullName)
-      .input("FirstName", dbSql.NVarChar(20), FirstName)
-      .input("LastName", dbSql.NVarChar(20), LastName)
-      .input("GenderId", dbSql.Int, GenderId)
-      .input("PhoneNumber", dbSql.NVarChar(20), PhoneNumber || null)
-      .input("CategoryId", dbSql.Int, CategoryId)
-      .input("StationId", dbSql.Int, StationId)
-      .input("UpdatedOn", dbSql.DateTime2, now)
-      .input("Status", dbSql.Bit, Status ?? 1)
-      .query(`
-        UPDATE Clients
+    const result = await pool.query(
+      `
+        UPDATE "Clients"
         SET 
-          IDNumber = @IDNumber,
-          FullName = @FullName,
-          FirstName = @FirstName,
-          LastName = @LastName,
-          GenderId = @GenderId,
-          PhoneNumber = @PhoneNumber,
-          CategoryId = @CategoryId,
-          StationId = @StationId,
-          UpdatedOn = @UpdatedOn,
-          Status = @Status
-        WHERE Id = @Id AND Deleted = 0
-      `);
+          "IDNumber" = $1,
+          "FullName" = $2,
+          "FirstName" = $3,
+          "LastName" = $4,
+          "GenderId" = $5,
+          "PhoneNumber" = $6,
+          "CategoryId" = $7,
+          "StationId" = $8,
+          "UpdatedOn" = $9,
+          "Status" = $10
+        WHERE "Id" = $11 AND "Deleted" = 0
+      `,
+      [
+        IDNumber, FullName, FirstName, LastName, GenderId,
+        PhoneNumber || null, CategoryId, StationId, now,
+        Status !== undefined ? Status : 1,
+        id
+      ]
+    );
 
-    if (result.rowsAffected[0] === 0)
+    if (result.rowCount === 0)
       return res.status(404).json({ message: "Employee not found" });
 
     res.status(200).json({ message: "Employee updated successfully" });
@@ -185,16 +175,12 @@ export const deleteEmployee = async (req: Request, res: Response) => {
 
   try {
     const pool = await poolPromise;
-    const result = await pool
-      .request()
-      .input("Id", dbSql.Int, id)
-      .query(`
-        UPDATE Clients
-        SET Deleted = 1
-        WHERE Id = @Id
-      `);
+    const result = await pool.query(
+      'UPDATE "Clients" SET "Deleted" = 1 WHERE "Id" = $1',
+      [id]
+    );
 
-    if (result.rowsAffected[0] === 0)
+    if (result.rowCount === 0)
       return res.status(404).json({ message: "Employee not found" });
 
     res.status(200).json({ message: "Employee deleted successfully" });

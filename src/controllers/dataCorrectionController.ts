@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { poolPromise, dbSql } from "../db/pool";
+import { poolPromise } from "../db/pool";
 
 /**
  * Correct StationId for Clients and Tallies
@@ -14,61 +14,66 @@ export const correctStationAssignments = async (req: Request, res: Response) => 
   try {
     const pool = await poolPromise;
 
-    // Begin transaction
-    const transaction = pool.transaction();
-    await transaction.begin();
-
-    const request = transaction.request();
+    // Build the time condition for PostgreSQL
+    let timeCondition = '';
+    const talliesParams: any[] = [];
+    let paramIndex = 1;
+    
+    if (beforeHour !== undefined && beforeMinute !== undefined) {
+      timeCondition = ` AND (
+        EXTRACT(HOUR FROM "UpdatedOn") < $${paramIndex}
+        OR (EXTRACT(HOUR FROM "UpdatedOn") = $${paramIndex} AND EXTRACT(MINUTE FROM "UpdatedOn") < $${paramIndex + 1})
+      )`;
+      talliesParams.push(beforeHour, beforeMinute);
+      paramIndex += 2;
+    }
+    
+    talliesParams.push(stationId, year, month, day, userId);
 
     // 🧩 Step 1: Update Tallies
-    const request1 = transaction.request();
-    await request1
-      .input("stationId", dbSql.Int, stationId)
-      .input("userId", dbSql.Int, userId)
-      .input("year", dbSql.Int, year)
-      .input("month", dbSql.Int, month)
-      .input("day", dbSql.Int, day)
-      .query(`
-        UPDATE Tallies
-        SET StationId = @stationId
-        WHERE DATEPART(year, UpdatedOn) = @year
-          AND DATEPART(month, UpdatedOn) = @month
-          AND DATEPART(day, UpdatedOn) = @day
-          AND UserId = @userId
-          ${beforeHour !== undefined && beforeMinute !== undefined ? `
-            AND (
-              DATEPART(hour, UpdatedOn) < ${beforeHour}
-              OR (DATEPART(hour, UpdatedOn) = ${beforeHour} AND DATEPART(minute, UpdatedOn) < ${beforeMinute})
-            )
-          ` : ""}
-      `);
+    const talliesQuery = `
+      UPDATE "Tallies"
+      SET "StationId" = $${paramIndex}
+      WHERE EXTRACT(YEAR FROM "UpdatedOn") = $${paramIndex + 1}
+        AND EXTRACT(MONTH FROM "UpdatedOn") = $${paramIndex + 2}
+        AND EXTRACT(DAY FROM "UpdatedOn") = $${paramIndex + 3}
+        AND "UserId" = $${paramIndex + 4}
+        ${timeCondition}
+    `;
+    
+    await pool.query(talliesQuery, talliesParams);
+    console.log(`✅ Updated Tallies with stationId=${stationId}`);
 
     // 🧩 Step 2: Update Clients related to affected Tallies
-    const request2 = transaction.request();
-    await request2
-      .input("stationId", dbSql.Int, stationId)
-      .input("userId", dbSql.Int, userId)
-      .input("year", dbSql.Int, year)
-      .input("month", dbSql.Int, month)
-      .input("day", dbSql.Int, day)
-      .query(`
-        UPDATE C
-        SET C.StationId = @stationId
-        FROM Clients C
-        INNER JOIN Tallies T ON T.ClientId = C.Id
-        WHERE DATEPART(year, T.UpdatedOn) = @year
-          AND DATEPART(month, T.UpdatedOn) = @month
-          AND DATEPART(day, T.UpdatedOn) = @day
-          AND T.UserId = @userId
-          ${beforeHour !== undefined && beforeMinute !== undefined ? `
-            AND (
-              DATEPART(hour, T.UpdatedOn) < ${beforeHour}
-              OR (DATEPART(hour, T.UpdatedOn) = ${beforeHour} AND DATEPART(minute, T.UpdatedOn) < ${beforeMinute})
-            )
-          ` : ""}
-      `);
-
-    await transaction.commit();
+    const clientsParams: any[] = [];
+    let clientParamIndex = 1;
+    
+    let clientTimeCondition = '';
+    if (beforeHour !== undefined && beforeMinute !== undefined) {
+      clientTimeCondition = ` AND (
+        EXTRACT(HOUR FROM t."UpdatedOn") < $${clientParamIndex}
+        OR (EXTRACT(HOUR FROM t."UpdatedOn") = $${clientParamIndex} AND EXTRACT(MINUTE FROM t."UpdatedOn") < $${clientParamIndex + 1})
+      )`;
+      clientsParams.push(beforeHour, beforeMinute);
+      clientParamIndex += 2;
+    }
+    
+    clientsParams.push(stationId, year, month, day, userId);
+    
+    const clientsQuery = `
+      UPDATE "Clients" c
+      SET "StationId" = $${clientParamIndex}
+      FROM "Tallies" t
+      WHERE t."ClientId" = c."Id"
+        AND EXTRACT(YEAR FROM t."UpdatedOn") = $${clientParamIndex + 1}
+        AND EXTRACT(MONTH FROM t."UpdatedOn") = $${clientParamIndex + 2}
+        AND EXTRACT(DAY FROM t."UpdatedOn") = $${clientParamIndex + 3}
+        AND t."UserId" = $${clientParamIndex + 4}
+        ${clientTimeCondition}
+    `;
+    
+    await pool.query(clientsQuery, clientsParams);
+    console.log(`✅ Updated Clients with stationId=${stationId}`);
 
     res.status(200).json({
       message: "Station correction completed successfully",

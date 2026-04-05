@@ -15,20 +15,26 @@ class DatabaseAdapter {
 
   async connect() {
     if (DB_TYPE === 'postgresql') {
+      // Use DATABASE_URL from environment (same as pool.ts)
+      const databaseUrl = process.env.DATABASE_URL;
+      if (!databaseUrl) {
+        throw new Error('DATABASE_URL environment variable is required for PostgreSQL');
+      }
+      
       this.pgPool = new PgPool({
-        host: process.env.PG_HOST,
-        port: parseInt(process.env.PG_PORT || '5432'),
-        database: process.env.PG_DATABASE,
-        user: process.env.PG_USER,
-        password: process.env.PG_PASSWORD,
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+        connectionString: databaseUrl,
+        ssl: {
+          rejectUnauthorized: false, // Accept self-signed certificates for Render
+        },
+        connectionTimeoutMillis: 10000,
       });
+      
       await this.pgPool.connect();
-      console.log('✅ Connected to PostgreSQL');
+      console.log('✅ Connected to PostgreSQL via dbAdapter');
     } else {
       // SQL Server connection - await the promise to get the actual pool
       this.sqlPool = await sqlServerPool;
-      console.log('✅ Connected to SQL Server');
+      console.log('✅ Connected to SQL Server via dbAdapter');
     }
   }
 
