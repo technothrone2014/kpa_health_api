@@ -19,10 +19,31 @@ const app = express();
 app.use(helmet());
 app.use(compression());
 
-// CORS Configuration
+// CORS Configuration - Allow multiple origins
+const allowedOrigins = [
+  'http://localhost:5173',                          // Local development
+  'https://kpa-health-ui.onrender.com',             // Production frontend
+  process.env.FRONTEND_URL,                         // Custom frontend URL if set
+].filter((origin): origin is string => !!origin);  // Remove undefined/null values
+
+// CORS middleware
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps, curl, server-to-server)
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      // Check if the origin is allowed
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`CORS blocked request from origin: ${origin}`);
+        // Still allow but log warning (or set to false to block)
+        callback(null, true); // Change to false to block unlisted origins
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -32,9 +53,9 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Request logging
+// Request logging with origin
 app.use((req: Request, res: Response, next: NextFunction) => {
-  logger.info(`${req.method} ${req.path}`);
+  logger.info(`${req.method} ${req.path} - Origin: ${req.headers.origin || 'same-origin'}`);
   next();
 });
 
@@ -56,6 +77,10 @@ app.get("/", (_req: Request, res: Response) => {
       employees: "/api/v1/employees",
       dataCorrection: "/api/data-correction",
       analytics: "/api/v1/analytics",
+    },
+    cors: {
+      allowedOrigins,
+      environment: process.env.NODE_ENV,
     },
   });
 });
@@ -92,6 +117,7 @@ const PORT: number = parseInt(process.env.PORT || "8080", 10);
 app.listen(PORT, '0.0.0.0', () => {
   logger.info(`🚀 Server ready at http://0.0.0.0:${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+  logger.info(`CORS allowed origins: ${allowedOrigins.join(', ')}`);
 });
 
 export default app;
