@@ -10,6 +10,7 @@ import compression from "compression";
 import employeesRouter from "./routes/employees";
 import dataCorrectionRoutes from "./routes/dataCorrection";
 import analyticsRouter from "./routes/analytics";
+import patientsRouter from './routes/patients';
 import { errorHandler } from "./middleware/errorHandler";
 import logger from "./utils/logger";
 
@@ -89,6 +90,7 @@ app.get("/", (_req: Request, res: Response) => {
 app.use("/api/v1/employees", employeesRouter);
 app.use("/api/data-correction", dataCorrectionRoutes);
 app.use("/api/v1/analytics", analyticsRouter);
+app.use('/api/v1/patients', patientsRouter);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {
