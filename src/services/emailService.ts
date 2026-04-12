@@ -1,36 +1,48 @@
 import nodemailer from 'nodemailer';
 
-// Brevo SMTP Configuration
+// Brevo SMTP Configuration - Using the working FarmFuzion pattern
 const BREVO_SMTP_HOST = process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com';
-const BREVO_SMTP_PORT = parseInt(process.env.BREVO_SMTP_PORT || '587');
+const BREVO_SMTP_PORT = parseInt(process.env.BREVO_SMTP_PORT || '2525');  // Use 2525 like FarmFuzion
 const BREVO_SMTP_SECURE = process.env.BREVO_SMTP_SECURE === 'true';
-const BREVO_API_KEY = process.env.BREVO_API_KEY;
-const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL;
+const BREVO_SMTP_USER = process.env.BREVO_SMTP_USER || 'a3ddac001@smtp-brevo.com';
+const BREVO_SMTP_KEY = process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY;
+const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'jayjchiringz@gmail.com';  // Use your Gmail
 const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'KPA Health Intelligence';
 
-// Create Brevo SMTP transporter
+console.log('📧 Email configuration:', {
+  host: BREVO_SMTP_HOST,
+  port: BREVO_SMTP_PORT,
+  authUser: BREVO_SMTP_USER,
+  fromEmail: BREVO_FROM_EMAIL,
+  hasKey: !!BREVO_SMTP_KEY,
+});
+
+// Create Brevo SMTP transporter - Using FarmFuzion pattern
 let transporter: nodemailer.Transporter | null = null;
 
-// Initialize transporter if credentials are available
-if (BREVO_API_KEY) {
+if (BREVO_SMTP_KEY && BREVO_SMTP_USER) {
   transporter = nodemailer.createTransport({
     host: BREVO_SMTP_HOST,
     port: BREVO_SMTP_PORT,
     secure: BREVO_SMTP_SECURE,
     auth: {
-      user: BREVO_FROM_EMAIL,
-      pass: BREVO_API_KEY,
+      user: BREVO_SMTP_USER,
+      pass: BREVO_SMTP_KEY,
     },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+    tls: {
+      rejectUnauthorized: false,
+    },
   });
   
   console.log(`📧 Email service configured: ${BREVO_SMTP_HOST}:${BREVO_SMTP_PORT}`);
 } else {
-  console.warn('⚠️ BREVO_API_KEY not set. Email services will be disabled.');
+  console.warn('⚠️ Email service not configured. Missing BREVO_SMTP_USER or BREVO_SMTP_KEY.');
 }
 
-// HTML Email Template for OTP
+// HTML Email Template for OTP (same as FarmFuzion style)
 const generateOTPEmailHTML = (otp: string, userName?: string): string => {
   return `
     <!DOCTYPE html>
@@ -39,129 +51,50 @@ const generateOTPEmailHTML = (otp: string, userName?: string): string => {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>KPA Health - Verification Code</title>
-      <style>
-        body {
-          font-family: 'Verdana', Geneva, sans-serif;
-          background-color: #f5f7fa;
-          margin: 0;
-          padding: 0;
-        }
-        .container {
-          max-width: 600px;
-          margin: 0 auto;
-          background: linear-gradient(135deg, #0B2F9E, #1A4D8C);
-          border-radius: 20px;
-          overflow: hidden;
-          box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
-        }
-        .header {
-          padding: 30px;
-          text-align: center;
-          border-bottom: 2px solid #FFD700;
-        }
-        .logo {
-          font-size: 48px;
-          margin-bottom: 10px;
-        }
-        .title {
-          color: #FFD700;
-          font-size: 24px;
-          font-weight: bold;
-          margin: 0;
-        }
-        .subtitle {
-          color: #A8E6CF;
-          font-size: 14px;
-          margin-top: 5px;
-        }
-        .content {
-          padding: 40px 30px;
-          background: white;
-        }
-        .greeting {
-          font-size: 18px;
-          color: #0B2F9E;
-          margin-bottom: 20px;
-        }
-        .message {
-          color: #333;
-          line-height: 1.6;
-          margin-bottom: 30px;
-        }
-        .otp-code {
-          background: #E8F0FE;
-          padding: 25px;
-          text-align: center;
-          border-radius: 12px;
-          margin: 20px 0;
-        }
-        .code {
-          font-size: 42px;
-          font-weight: bold;
-          color: #0B2F9E;
-          letter-spacing: 8px;
-          font-family: monospace;
-        }
-        .expiry {
-          font-size: 12px;
-          color: #888;
-          text-align: center;
-          margin-top: 15px;
-        }
-        .footer {
-          background: #0A1C40;
-          padding: 20px;
-          text-align: center;
-          color: #A8E6CF;
-          font-size: 12px;
-        }
-        .button {
-          background: linear-gradient(135deg, #FFD700, #FFA500);
-          color: #0A1C40;
-          padding: 12px 24px;
-          text-decoration: none;
-          border-radius: 8px;
-          display: inline-block;
-          font-weight: bold;
-        }
-        .warning {
-          font-size: 11px;
-          color: #999;
-          margin-top: 20px;
-          text-align: center;
-        }
-      </style>
     </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <div class="logo">⚓</div>
-          <h1 class="title">KPA Health Intelligence</h1>
-          <p class="subtitle">EAP Health Week Portal</p>
+    <body style="font-family: 'Verdana', Geneva, sans-serif; line-height: 1.6; margin: 0; padding: 0; background-color: #f4f4f4;">
+      <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #0B2F9E, #1A4D8C); padding: 30px 20px; text-align: center;">
+          <div style="font-size: 48px; margin-bottom: 10px;">⚓</div>
+          <h1 style="color: #FFD700; margin: 0; font-size: 28px;">KPA Health Intelligence</h1>
+          <p style="color: #A8E6CF; margin: 10px 0 0 0; opacity: 0.9;">EAP Health Week Portal</p>
         </div>
-        <div class="content">
-          <div class="greeting">
+        
+        <!-- Content -->
+        <div style="padding: 40px 30px;">
+          <p style="font-size: 16px; color: #333; margin-bottom: 20px;">
             ${userName ? `Dear ${userName},` : 'Dear User,'}
+          </p>
+          
+          <p style="font-size: 16px; color: #333; margin-bottom: 15px;">
+            Your verification code for KPA Health Intelligence is:
+          </p>
+          
+          <div style="background-color: #E8F0FE; padding: 25px; text-align: center; border-radius: 8px; margin: 25px 0; border: 2px dashed #0B2F9E;">
+            <h2 style="font-size: 42px; letter-spacing: 8px; margin: 0; color: #0B2F9E; font-weight: bold;">${otp}</h2>
           </div>
-          <div class="message">
-            You have requested to access the KPA Health Intelligence Dashboard. 
-            Please use the verification code below to complete your login.
+          
+          <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 5px; padding: 15px; margin: 20px 0;">
+            <p style="font-size: 14px; color: #856404; margin: 0;">
+              <strong>⏰ Valid for 10 minutes only</strong><br>
+              🔒 Never share this code with anyone
+            </p>
           </div>
-          <div class="otp-code">
-            <p style="margin: 0 0 10px; color: #666;">Your verification code is:</p>
-            <div class="code">${otp}</div>
-          </div>
-          <div class="expiry">
-            ⏰ This code will expire in <strong>10 minutes</strong>
-          </div>
-          <div class="warning">
-            🔒 If you didn't request this code, please ignore this email.<br>
-            Never share this code with anyone. KPA Health will never ask for it.
-          </div>
+          
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
+          
+          <p style="font-size: 12px; color: #999; text-align: center; margin: 0;">
+            If you didn't request this code, please ignore this email.<br>
+            &copy; ${new Date().getFullYear()} Kenya Ports Authority - EAP Health Week. All rights reserved.
+          </p>
         </div>
-        <div class="footer">
-          <p>&copy; 2024 Kenya Ports Authority - EAP Health Week. All rights reserved.</p>
-          <p style="margin-top: 5px;">Secure Health Intelligence System</p>
+        
+        <!-- Footer -->
+        <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e0e0e0;">
+          <p style="font-size: 12px; color: #999; margin: 0;">
+            Kenya Ports Authority - Secure Health Intelligence System
+          </p>
         </div>
       </div>
     </body>
@@ -169,7 +102,7 @@ const generateOTPEmailHTML = (otp: string, userName?: string): string => {
   `;
 };
 
-// Plain text version for email clients that don't support HTML
+// Plain text version
 const generateOTPEmailText = (otp: string): string => {
   return `
 KPA Health Intelligence - Verification Code
@@ -194,7 +127,7 @@ export const sendEmailOTP = async (
   userName?: string
 ): Promise<boolean> => {
   if (!transporter) {
-    console.error('❌ Email service not configured. BREVO_API_KEY is missing.');
+    console.error('❌ Email service not configured.');
     return false;
   }
 
@@ -205,6 +138,11 @@ export const sendEmailOTP = async (
       subject: '🔐 KPA Health - Your Verification Code',
       html: generateOTPEmailHTML(otp, userName),
       text: generateOTPEmailText(otp),
+      headers: {
+        'X-Priority': '1',
+        'X-MSMail-Priority': 'High',
+        'Importance': 'high',
+      },
     };
 
     const info = await transporter.sendMail(mailOptions);
@@ -216,37 +154,7 @@ export const sendEmailOTP = async (
   }
 };
 
-// Generic email sender for other notifications
-export const sendEmail = async (
-  toEmail: string,
-  subject: string,
-  htmlContent: string,
-  textContent?: string
-): Promise<boolean> => {
-  if (!transporter) {
-    console.error('❌ Email service not configured. BREVO_API_KEY is missing.');
-    return false;
-  }
-
-  try {
-    const mailOptions = {
-      from: `"${BREVO_FROM_NAME}" <${BREVO_FROM_EMAIL}>`,
-      to: toEmail,
-      subject: subject,
-      html: htmlContent,
-      text: textContent || htmlContent.replace(/<[^>]*>/g, ''),
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Email sent to ${toEmail}, Subject: ${subject}, Message ID: ${info.messageId}`);
-    return true;
-  } catch (error) {
-    console.error('❌ Failed to send email:', error);
-    return false;
-  }
-};
-
-// Diagnostic function to test email configuration
+// Diagnostic function
 export const testEmailConnection = async (): Promise<{
   success: boolean;
   message: string;
@@ -255,7 +163,7 @@ export const testEmailConnection = async (): Promise<{
   if (!transporter) {
     return {
       success: false,
-      message: 'Email service not configured. BREVO_API_KEY is missing.',
+      message: 'Email service not configured.',
     };
   }
 
@@ -278,49 +186,4 @@ export const testEmailConnection = async (): Promise<{
       details: error,
     };
   }
-};
-
-// Send welcome email to new users
-export const sendWelcomeEmail = async (
-  toEmail: string,
-  userName: string,
-  role: string
-): Promise<boolean> => {
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>Welcome to KPA Health Intelligence</title>
-      <style>
-        body { font-family: 'Verdana', Geneva, sans-serif; background-color: #f5f7fa; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #0B2F9E, #1A4D8C); border-radius: 20px; overflow: hidden; }
-        .header { padding: 30px; text-align: center; border-bottom: 2px solid #FFD700; }
-        .logo { font-size: 48px; margin-bottom: 10px; }
-        .title { color: #FFD700; font-size: 24px; font-weight: bold; margin: 0; }
-        .content { padding: 40px 30px; background: white; }
-        .footer { background: #0A1C40; padding: 20px; text-align: center; color: #A8E6CF; font-size: 12px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <div class="logo">⚓</div>
-          <h1 class="title">Welcome to KPA Health Intelligence</h1>
-        </div>
-        <div class="content">
-          <h2>Welcome, ${userName}!</h2>
-          <p>Your account has been successfully created with the role: <strong>${role}</strong>.</p>
-          <p>You can now log in to the KPA Health Intelligence Dashboard to access health data and analytics.</p>
-          <p>If you have any questions, please contact your system administrator.</p>
-        </div>
-        <div class="footer">
-          <p>Kenya Ports Authority - EAP Health Week</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-
-  return await sendEmail(toEmail, 'Welcome to KPA Health Intelligence', htmlContent);
 };
