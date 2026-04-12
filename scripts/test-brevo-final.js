@@ -1,7 +1,7 @@
 const nodemailer = require('nodemailer');
 
 // REPLACE WITH YOUR BRAND NEW SMTP KEY
-const NEW_SMTP_KEY = 'xsmtpsib-5db2281297d85a0b87a75f1f4d99d1d064e3dfcf20309790df7c8638f9732692-FM0pgxq4SL9Rz32c';
+const NEW_SMTP_KEY = 'xsmtpsib-5db2281297d85a0b87a75f1f4d99d1d064e3dfcf20309790df7c8638f9732692-KueEqXnyKSF0jE0N';
 
 const transporter = nodemailer.createTransport({
   host: 'smtp-relay.brevo.com',

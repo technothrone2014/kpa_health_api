@@ -1,43 +1,14 @@
-import nodemailer from 'nodemailer';
+import https from 'https';
 
-// Brevo SMTP Configuration - Read from environment variables
-const BREVO_SMTP_HOST = process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com';
-const BREVO_SMTP_PORT = parseInt(process.env.BREVO_SMTP_PORT || '587');  // Changed to 587 default
-const BREVO_SMTP_SECURE = process.env.BREVO_SMTP_SECURE === 'true';
-const BREVO_SMTP_USER = process.env.BREVO_SMTP_USER;
-const BREVO_SMTP_KEY = process.env.BREVO_SMTP_KEY;
-const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL;
-const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'KPA Health Intelligence';
+// Brevo API Configuration
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'technothrone2014@gmail.com';
+const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'KPA EAP Health Week';
 
-console.log('🔐 DEBUG - Environment variables:');
-console.log('  BREVO_SMTP_USER:', process.env.BREVO_SMTP_USER);
-console.log('  BREVO_SMTP_KEY:', process.env.BREVO_SMTP_KEY ? '***SET***' : 'MISSING');
-console.log('  BREVO_SMTP_KEY length:', process.env.BREVO_SMTP_KEY?.length);
-console.log('  BREVO_FROM_EMAIL:', process.env.BREVO_FROM_EMAIL);
-
-console.log('📧 Email configuration:', {
-  host: BREVO_SMTP_HOST,
-  port: BREVO_SMTP_PORT,
-  user: BREVO_SMTP_USER ? BREVO_SMTP_USER.substring(0, 10) + '...' : 'missing',
-  hasPass: !!BREVO_SMTP_KEY,
+console.log('📧 Email API configuration:', {
+  hasApiKey: !!BREVO_API_KEY,
   fromEmail: BREVO_FROM_EMAIL,
-});
-
-// Create transporter with settings from environment
-const transporter = nodemailer.createTransport({
-  host: BREVO_SMTP_HOST,
-  port: BREVO_SMTP_PORT,
-  secure: BREVO_SMTP_SECURE,
-  auth: {
-    user: BREVO_SMTP_USER,
-    pass: BREVO_SMTP_KEY,
-  },
-  connectionTimeout: 15000,
-  greetingTimeout: 15000,
-  socketTimeout: 20000,
-  tls: {
-    rejectUnauthorized: false,
-  },
+  fromName: BREVO_FROM_NAME,
 });
 
 // HTML Email Template for OTP
@@ -51,12 +22,12 @@ const generateOTPEmailHTML = (otp: string, userName?: string): string => {
       <title>KPA Health - Verification Code</title>
     </head>
     <body style="font-family: 'Verdana', Geneva, sans-serif; line-height: 1.6; margin: 0; padding: 0; background-color: #f4f4f4;">
-      <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; borderRadius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+      <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
         <!-- Header -->
         <div style="background: linear-gradient(135deg, #0B2F9E, #1A4D8C); padding: 30px 20px; text-align: center;">
           <div style="font-size: 48px; margin-bottom: 10px;">⚓</div>
           <h1 style="color: #FFD700; margin: 0; font-size: 28px;">KPA Health Intelligence</h1>
-          <p style="color: #A8E6CF; margin: 10px 0 0 0; opacity: 0.9;">EAP Health Week Portal</p>
+          <p style="color: #A8E6CF; margin: 10px 0 0 0;">EAP Health Week Portal</p>
         </div>
         
         <!-- Content -->
@@ -118,55 +89,79 @@ Secure Health Intelligence System
   `;
 };
 
-// Send OTP email using Brevo SMTP
+// Send OTP email using Brevo API
 export const sendEmailOTP = async (
   toEmail: string, 
   otp: string, 
   userName?: string
 ): Promise<boolean> => {
-  if (!BREVO_SMTP_USER || !BREVO_SMTP_KEY) {
-    console.error('❌ BREVO_SMTP_USER or BREVO_SMTP_KEY missing from config');
+  if (!BREVO_API_KEY) {
+    console.error('❌ BREVO_API_KEY not configured');
     return false;
   }
 
-  console.log(`📧 Attempting to send OTP to ${toEmail} using Brevo...`);
+  console.log(`📧 Sending OTP to ${toEmail} via Brevo API...`);
 
-  const mailOptions = {
-    from: `"${BREVO_FROM_NAME}" <${BREVO_FROM_EMAIL}>`,
-    to: toEmail,
-    subject: '🔐 KPA Health - Your Verification Code',
-    text: generateOTPEmailText(otp),
-    html: generateOTPEmailHTML(otp, userName),
-    headers: {
-      'X-Priority': '1',
-      'X-MSMail-Priority': 'High',
-      'Importance': 'high',
+  const postData = JSON.stringify({
+    sender: {
+      name: BREVO_FROM_NAME,
+      email: BREVO_FROM_EMAIL
     },
+    to: [{
+      email: toEmail,
+      name: userName || 'User'
+    }],
+    subject: '🔐 KPA Health - Your Verification Code',
+    htmlContent: generateOTPEmailHTML(otp, userName),
+    textContent: generateOTPEmailText(otp),
+  });
+
+  const options = {
+    hostname: 'api.brevo.com',
+    port: 443,
+    path: '/v3/smtp/email',
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'api-key': BREVO_API_KEY,
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(postData),
+    },
+    timeout: 30000,
   };
 
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ OTP Email Sent Successfully via Brevo:", {
-      messageId: info.messageId,
-      response: info.response,
-      to: toEmail,
-      accepted: info.accepted,
-    });
-    return true;
-  } catch (error: any) {
-    console.error("❌ Failed to send OTP email via Brevo:", {
-      error: error.message,
-      code: error.code,
-      command: error.command,
-      to: toEmail,
+  return new Promise((resolve) => {
+    const req = https.request(options, (res) => {
+      let responseData = '';
+      res.on('data', (chunk) => {
+        responseData += chunk;
+      });
+      
+      res.on('end', () => {
+        if (res.statusCode === 201 || res.statusCode === 200) {
+          console.log(`✅ OTP email sent successfully to ${toEmail}`);
+          resolve(true);
+        } else {
+          console.error(`❌ API error ${res.statusCode}:`, responseData);
+          resolve(false);
+        }
+      });
     });
 
-    if (error.code === "EAUTH") {
-      console.error("Email authentication failed - check BREVO_SMTP_USER and BREVO_SMTP_KEY");
-    }
-    
-    return false;
-  }
+    req.on('error', (error) => {
+      console.error('❌ API request failed:', error.message);
+      resolve(false);
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      console.error('❌ API request timeout');
+      resolve(false);
+    });
+
+    req.write(postData);
+    req.end();
+  });
 };
 
 // Diagnostic function to test email configuration
@@ -175,26 +170,19 @@ export const testEmailConnection = async (): Promise<{
   message: string;
   details?: any;
 }> => {
-  try {
-    await transporter.verify();
-    return {
-      success: true,
-      message: 'Email service configured successfully',
-      details: {
-        host: BREVO_SMTP_HOST,
-        port: BREVO_SMTP_PORT,
-        from: BREVO_FROM_EMAIL,
-        name: BREVO_FROM_NAME,
-      },
-    };
-  } catch (error: any) {
+  if (!BREVO_API_KEY) {
     return {
       success: false,
-      message: 'Email service verification failed',
-      details: {
-        error: error.message,
-        code: error.code,
-      },
+      message: 'BREVO_API_KEY not configured',
     };
   }
+
+  return {
+    success: true,
+    message: 'Email API configured successfully',
+    details: {
+      from: BREVO_FROM_EMAIL,
+      name: BREVO_FROM_NAME,
+    },
+  };
 };
