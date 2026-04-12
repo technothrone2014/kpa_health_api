@@ -1,10 +1,10 @@
 import nodemailer from 'nodemailer';
 
 // Brevo SMTP Configuration - EXACT pattern from FarmFuzion
-const MAIL_USER = process.env.BREVO_SMTP_USER || 'a3ddac001@smtp-brevo.com';
-const MAIL_PASS = process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY;
-const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'jayjchiringz@gmail.com';
-const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'KPA Health Intelligence';
+const MAIL_USER = process.env.BREVO_SMTP_USER;
+const MAIL_PASS = process.env.BREVO_SMTP_KEY;
+const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL;
+const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME;
 
 console.log('📧 Email configuration:', {
   host: 'smtp-relay.brevo.com',
