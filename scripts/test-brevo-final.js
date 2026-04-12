@@ -8,7 +8,7 @@ const transporter = nodemailer.createTransport({
   port: 587,
   secure: false,
   auth: {
-    user: 'a7dda2001@smtp-brevo.com',
+    user: 'a3ddac001@smtp-brevo.com',
     pass: NEW_SMTP_KEY,
   },
   tls: { rejectUnauthorized: false },
