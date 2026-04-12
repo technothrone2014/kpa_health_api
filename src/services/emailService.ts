@@ -1,27 +1,30 @@
 import nodemailer from 'nodemailer';
 
-// Brevo SMTP Configuration - EXACT pattern from FarmFuzion
-const MAIL_USER = process.env.BREVO_SMTP_USER;
-const MAIL_PASS = process.env.BREVO_SMTP_KEY;
+// Brevo SMTP Configuration - Read from environment variables
+const BREVO_SMTP_HOST = process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com';
+const BREVO_SMTP_PORT = parseInt(process.env.BREVO_SMTP_PORT || '587');  // Changed to 587 default
+const BREVO_SMTP_SECURE = process.env.BREVO_SMTP_SECURE === 'true';
+const BREVO_SMTP_USER = process.env.BREVO_SMTP_USER;
+const BREVO_SMTP_KEY = process.env.BREVO_SMTP_KEY;
 const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL;
-const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME;
+const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'KPA Health Intelligence';
 
 console.log('📧 Email configuration:', {
-  host: 'smtp-relay.brevo.com',
-  port: 2525,
-  user: MAIL_USER ? MAIL_USER.substring(0, 10) + '...' : 'missing',
-  hasPass: !!MAIL_PASS,
+  host: BREVO_SMTP_HOST,
+  port: BREVO_SMTP_PORT,
+  user: BREVO_SMTP_USER ? BREVO_SMTP_USER.substring(0, 10) + '...' : 'missing',
+  hasPass: !!BREVO_SMTP_KEY,
   fromEmail: BREVO_FROM_EMAIL,
 });
 
-// Create transporter with EXACT FarmFuzion settings
+// Create transporter with settings from environment
 const transporter = nodemailer.createTransport({
-  host: "smtp-relay.brevo.com",
-  port: 2525,
-  secure: false, // false for port 2525
+  host: BREVO_SMTP_HOST,
+  port: BREVO_SMTP_PORT,
+  secure: BREVO_SMTP_SECURE,
   auth: {
-    user: MAIL_USER,
-    pass: MAIL_PASS,
+    user: BREVO_SMTP_USER,
+    pass: BREVO_SMTP_KEY,
   },
   connectionTimeout: 15000,
   greetingTimeout: 15000,
@@ -42,7 +45,7 @@ const generateOTPEmailHTML = (otp: string, userName?: string): string => {
       <title>KPA Health - Verification Code</title>
     </head>
     <body style="font-family: 'Verdana', Geneva, sans-serif; line-height: 1.6; margin: 0; padding: 0; background-color: #f4f4f4;">
-      <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+      <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; borderRadius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
         <!-- Header -->
         <div style="background: linear-gradient(135deg, #0B2F9E, #1A4D8C); padding: 30px 20px; text-align: center;">
           <div style="font-size: 48px; margin-bottom: 10px;">⚓</div>
@@ -109,14 +112,14 @@ Secure Health Intelligence System
   `;
 };
 
-// Send OTP email using Brevo SMTP - EXACT pattern from FarmFuzion
+// Send OTP email using Brevo SMTP
 export const sendEmailOTP = async (
   toEmail: string, 
   otp: string, 
   userName?: string
 ): Promise<boolean> => {
-  if (!MAIL_USER || !MAIL_PASS) {
-    console.error('❌ MAIL_USER or MAIL_PASS missing from config');
+  if (!BREVO_SMTP_USER || !BREVO_SMTP_KEY) {
+    console.error('❌ BREVO_SMTP_USER or BREVO_SMTP_KEY missing from config');
     return false;
   }
 
@@ -152,15 +155,8 @@ export const sendEmailOTP = async (
       to: toEmail,
     });
 
-    // Provide specific error messages
-    if (error.code === "ETIMEDOUT") {
-      console.error("Email service timeout - please try again");
-    } else if (error.code === "EAUTH") {
-      console.error("Email authentication failed - check credentials");
-    } else if (error.code === "ESOCKET") {
-      console.error("Network error - unable to connect to email server");
-    } else if (error.code === "ECONNREFUSED") {
-      console.error("Connection refused - email server may be blocking the request");
+    if (error.code === "EAUTH") {
+      console.error("Email authentication failed - check BREVO_SMTP_USER and BREVO_SMTP_KEY");
     }
     
     return false;
@@ -179,8 +175,8 @@ export const testEmailConnection = async (): Promise<{
       success: true,
       message: 'Email service configured successfully',
       details: {
-        host: 'smtp-relay.brevo.com',
-        port: 2525,
+        host: BREVO_SMTP_HOST,
+        port: BREVO_SMTP_PORT,
         from: BREVO_FROM_EMAIL,
         name: BREVO_FROM_NAME,
       },
