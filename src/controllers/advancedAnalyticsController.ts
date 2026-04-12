@@ -121,29 +121,26 @@ export const getHighRiskPatients = async (req: Request, res: Response) => {
           c."FullName",
           c."IDNumber",
           c."PhoneNumber",
-          bp."Title" as bp_status,
-          t."PostedOn",
-          ROW_NUMBER() OVER (PARTITION BY c."Id" ORDER BY t."PostedOn" DESC) as rn,
-          COUNT(*) OVER (PARTITION BY c."Id") as total_readings,
-          SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END) OVER (PARTITION BY c."Id") as abnormal_count
+          c."CategoryTitle",
+          c."StationTitle",
+          COUNT(*) as total_readings,
+          SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END) as abnormal_count,
+          ROUND((SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END)::numeric / COUNT(*) * 100), 2) as abnormal_percentage
         FROM "Tallies" t
         JOIN "Clients" c ON t."ClientId" = c."Id"
         JOIN "BPINTValues" bp ON t."BPINTValueId" = bp."Id"
         JOIN "BMIINTValues" bmi ON t."BMIINTValueId" = bmi."Id"
-        WHERE c."Deleted" = false
+        JOIN "RBSINTValues" rbs ON t."RBSINTValueId" = rbs."Id"
+        WHERE t."Deleted" = false
+          AND c."Deleted" = false
+        GROUP BY c."Id", c."FullName", c."IDNumber", c."PhoneNumber", c."CategoryTitle", c."StationTitle"
       )
-      SELECT DISTINCT
-        client_id,
-        "FullName",
-        "IDNumber",
-        "PhoneNumber",
-        total_readings,
-        abnormal_count,
-        ROUND((abnormal_count::float / total_readings) * 100, 2) as abnormal_percentage
+      SELECT *
       FROM patient_readings
       WHERE abnormal_count >= $1
-        AND (abnormal_count::float / total_readings) * 100 >= $2
+        AND abnormal_percentage >= $2
       ORDER BY abnormal_percentage DESC
+      LIMIT 50
     `;
     
     const result = await pool.query(query, [consecutiveCount, threshold]);
