@@ -14,6 +14,7 @@ import patientsRouter from './routes/patients';
 import authRouter from './routes/auth.js';
 import { errorHandler } from "./middleware/errorHandler";
 import logger from "./utils/logger";
+import { testEmailConnection } from './services/emailService.js';
 
 const app = express();
 
@@ -113,6 +114,11 @@ app.use((_req: Request, res: Response) => {
     success: false,
     message: "Route not found",
   });
+});
+
+app.get('/api/v1/email/test', async (_req, res) => {
+  const result = await testEmailConnection();
+  res.json(result);
 });
 
 // Global error handler

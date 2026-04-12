@@ -5,7 +5,7 @@ const BREVO_SMTP_HOST = process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com';
 const BREVO_SMTP_PORT = parseInt(process.env.BREVO_SMTP_PORT || '587');
 const BREVO_SMTP_SECURE = process.env.BREVO_SMTP_SECURE === 'true';
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
-const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'noreply@kpa-health.co.ke';
+const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL;
 const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'KPA Health Intelligence';
 
 // Create Brevo SMTP transporter
