@@ -11,6 +11,7 @@ import employeesRouter from "./routes/employees";
 import dataCorrectionRoutes from "./routes/dataCorrection";
 import analyticsRouter from "./routes/analytics";
 import patientsRouter from './routes/patients';
+import authRouter from './routes/auth.js';
 import { errorHandler } from "./middleware/errorHandler";
 import logger from "./utils/logger";
 
@@ -51,6 +52,7 @@ app.use(
   })
 );
 
+// Body parsers - IMPORTANT: These must come before route handlers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -75,9 +77,11 @@ app.get("/", (_req: Request, res: Response) => {
     version: "2.0.0",
     status: "running",
     endpoints: {
+      auth: "/api/v1/auth",
       employees: "/api/v1/employees",
       dataCorrection: "/api/data-correction",
       analytics: "/api/v1/analytics",
+      patients: "/api/v1/patients",
     },
     cors: {
       allowedOrigins,
@@ -86,19 +90,12 @@ app.get("/", (_req: Request, res: Response) => {
   });
 });
 
-// API Routes
+// API Routes - ORDER MATTERS! More specific routes first, then general
+app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/employees", employeesRouter);
-app.use("/api/data-correction", dataCorrectionRoutes);
 app.use("/api/v1/analytics", analyticsRouter);
-app.use('/api/v1/patients', patientsRouter);
-
-// 404 handler
-app.use((_req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    message: "Route not found",
-  });
-});
+app.use("/api/v1/patients", patientsRouter);
+app.use("/api/data-correction", dataCorrectionRoutes);
 
 // Test route for deployment verification
 app.get("/api/test", (_req: Request, res: Response) => {
@@ -107,6 +104,14 @@ app.get("/api/test", (_req: Request, res: Response) => {
     message: "API is working!",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
+  });
+});
+
+// 404 handler - This should be LAST before error handler
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
   });
 });
 
@@ -120,6 +125,7 @@ app.listen(PORT, '0.0.0.0', () => {
   logger.info(`🚀 Server ready at http://0.0.0.0:${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
   logger.info(`CORS allowed origins: ${allowedOrigins.join(', ')}`);
+  logger.info(`✅ Auth routes registered at /api/v1/auth`);
 });
 
 export default app;
