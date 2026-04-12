@@ -9,6 +9,12 @@ const BREVO_SMTP_KEY = process.env.BREVO_SMTP_KEY;
 const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL;
 const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'KPA Health Intelligence';
 
+console.log('🔐 DEBUG - Environment variables:');
+console.log('  BREVO_SMTP_USER:', process.env.BREVO_SMTP_USER);
+console.log('  BREVO_SMTP_KEY:', process.env.BREVO_SMTP_KEY ? '***SET***' : 'MISSING');
+console.log('  BREVO_SMTP_KEY length:', process.env.BREVO_SMTP_KEY?.length);
+console.log('  BREVO_FROM_EMAIL:', process.env.BREVO_FROM_EMAIL);
+
 console.log('📧 Email configuration:', {
   host: BREVO_SMTP_HOST,
   port: BREVO_SMTP_PORT,
