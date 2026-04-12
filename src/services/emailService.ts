@@ -1,48 +1,37 @@
 import nodemailer from 'nodemailer';
 
-// Brevo SMTP Configuration - Using the working FarmFuzion pattern
-const BREVO_SMTP_HOST = process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com';
-const BREVO_SMTP_PORT = parseInt(process.env.BREVO_SMTP_PORT || '2525');  // Use 2525 like FarmFuzion
-const BREVO_SMTP_SECURE = process.env.BREVO_SMTP_SECURE === 'true';
-const BREVO_SMTP_USER = process.env.BREVO_SMTP_USER || 'a3ddac001@smtp-brevo.com';
-const BREVO_SMTP_KEY = process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY;
-const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'jayjchiringz@gmail.com';  // Use your Gmail
+// Brevo SMTP Configuration - EXACT pattern from FarmFuzion
+const MAIL_USER = process.env.BREVO_SMTP_USER || 'a3ddac001@smtp-brevo.com';
+const MAIL_PASS = process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY;
+const BREVO_FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'jayjchiringz@gmail.com';
 const BREVO_FROM_NAME = process.env.BREVO_FROM_NAME || 'KPA Health Intelligence';
 
 console.log('📧 Email configuration:', {
-  host: BREVO_SMTP_HOST,
-  port: BREVO_SMTP_PORT,
-  authUser: BREVO_SMTP_USER,
+  host: 'smtp-relay.brevo.com',
+  port: 2525,
+  user: MAIL_USER ? MAIL_USER.substring(0, 10) + '...' : 'missing',
+  hasPass: !!MAIL_PASS,
   fromEmail: BREVO_FROM_EMAIL,
-  hasKey: !!BREVO_SMTP_KEY,
 });
 
-// Create Brevo SMTP transporter - Using FarmFuzion pattern
-let transporter: nodemailer.Transporter | null = null;
+// Create transporter with EXACT FarmFuzion settings
+const transporter = nodemailer.createTransport({
+  host: "smtp-relay.brevo.com",
+  port: 2525,
+  secure: false, // false for port 2525
+  auth: {
+    user: MAIL_USER,
+    pass: MAIL_PASS,
+  },
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 20000,
+  tls: {
+    rejectUnauthorized: false,
+  },
+});
 
-if (BREVO_SMTP_KEY && BREVO_SMTP_USER) {
-  transporter = nodemailer.createTransport({
-    host: BREVO_SMTP_HOST,
-    port: BREVO_SMTP_PORT,
-    secure: BREVO_SMTP_SECURE,
-    auth: {
-      user: BREVO_SMTP_USER,
-      pass: BREVO_SMTP_KEY,
-    },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000,
-    tls: {
-      rejectUnauthorized: false,
-    },
-  });
-  
-  console.log(`📧 Email service configured: ${BREVO_SMTP_HOST}:${BREVO_SMTP_PORT}`);
-} else {
-  console.warn('⚠️ Email service not configured. Missing BREVO_SMTP_USER or BREVO_SMTP_KEY.');
-}
-
-// HTML Email Template for OTP (same as FarmFuzion style)
+// HTML Email Template for OTP
 const generateOTPEmailHTML = (otp: string, userName?: string): string => {
   return `
     <!DOCTYPE html>
@@ -120,70 +109,90 @@ Secure Health Intelligence System
   `;
 };
 
-// Send OTP email using Brevo SMTP
+// Send OTP email using Brevo SMTP - EXACT pattern from FarmFuzion
 export const sendEmailOTP = async (
   toEmail: string, 
   otp: string, 
   userName?: string
 ): Promise<boolean> => {
-  if (!transporter) {
-    console.error('❌ Email service not configured.');
+  if (!MAIL_USER || !MAIL_PASS) {
+    console.error('❌ MAIL_USER or MAIL_PASS missing from config');
     return false;
   }
 
-  try {
-    const mailOptions = {
-      from: `"${BREVO_FROM_NAME}" <${BREVO_FROM_EMAIL}>`,
-      to: toEmail,
-      subject: '🔐 KPA Health - Your Verification Code',
-      html: generateOTPEmailHTML(otp, userName),
-      text: generateOTPEmailText(otp),
-      headers: {
-        'X-Priority': '1',
-        'X-MSMail-Priority': 'High',
-        'Importance': 'high',
-      },
-    };
+  console.log(`📧 Attempting to send OTP to ${toEmail} using Brevo...`);
 
+  const mailOptions = {
+    from: `"${BREVO_FROM_NAME}" <${BREVO_FROM_EMAIL}>`,
+    to: toEmail,
+    subject: '🔐 KPA Health - Your Verification Code',
+    text: generateOTPEmailText(otp),
+    html: generateOTPEmailHTML(otp, userName),
+    headers: {
+      'X-Priority': '1',
+      'X-MSMail-Priority': 'High',
+      'Importance': 'high',
+    },
+  };
+
+  try {
     const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ OTP email sent to ${toEmail}, Message ID: ${info.messageId}`);
+    console.log("✅ OTP Email Sent Successfully via Brevo:", {
+      messageId: info.messageId,
+      response: info.response,
+      to: toEmail,
+      accepted: info.accepted,
+    });
     return true;
-  } catch (error) {
-    console.error('❌ Failed to send OTP email:', error);
+  } catch (error: any) {
+    console.error("❌ Failed to send OTP email via Brevo:", {
+      error: error.message,
+      code: error.code,
+      command: error.command,
+      to: toEmail,
+    });
+
+    // Provide specific error messages
+    if (error.code === "ETIMEDOUT") {
+      console.error("Email service timeout - please try again");
+    } else if (error.code === "EAUTH") {
+      console.error("Email authentication failed - check credentials");
+    } else if (error.code === "ESOCKET") {
+      console.error("Network error - unable to connect to email server");
+    } else if (error.code === "ECONNREFUSED") {
+      console.error("Connection refused - email server may be blocking the request");
+    }
+    
     return false;
   }
 };
 
-// Diagnostic function
+// Diagnostic function to test email configuration
 export const testEmailConnection = async (): Promise<{
   success: boolean;
   message: string;
   details?: any;
 }> => {
-  if (!transporter) {
-    return {
-      success: false,
-      message: 'Email service not configured.',
-    };
-  }
-
   try {
     await transporter.verify();
     return {
       success: true,
       message: 'Email service configured successfully',
       details: {
-        host: BREVO_SMTP_HOST,
-        port: BREVO_SMTP_PORT,
+        host: 'smtp-relay.brevo.com',
+        port: 2525,
         from: BREVO_FROM_EMAIL,
         name: BREVO_FROM_NAME,
       },
     };
-  } catch (error) {
+  } catch (error: any) {
     return {
       success: false,
       message: 'Email service verification failed',
-      details: error,
+      details: {
+        error: error.message,
+        code: error.code,
+      },
     };
   }
 };
