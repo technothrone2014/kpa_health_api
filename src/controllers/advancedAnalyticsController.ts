@@ -49,7 +49,7 @@ const buildWhereClause = (params: FilterParams): { sql: string; values: any[] } 
 export const getHealthTrends = async (req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
-    const { startDate, endDate, category, station, metric } = req.query;
+    const { startDate, endDate, category, station } = req.query;
     
     let query = `
       SELECT 
@@ -66,30 +66,41 @@ export const getHealthTrends = async (req: Request, res: Response) => {
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       JOIN "BPINTValues" bp ON t."BPINTValueId" = bp."Id"
       JOIN "BMIINTValues" bmi ON t."BMIINTValueId" = bmi."Id"
-      WHERE 1=1
+      JOIN "Stations" s ON c."StationId" = s."Id"
+      WHERE t."Deleted" = false
+        AND c."Deleted" = false
+        AND cat."Deleted" = false
+        AND t."PostedOn" IS NOT NULL
     `;
     
     const params: any[] = [];
     let paramIndex = 1;
     
-    if (startDate) {
+    // Use the actual data range if no dates provided
+    if (startDate && startDate !== '') {
       query += ` AND t."PostedOn" >= $${paramIndex++}`;
       params.push(startDate);
     }
-    if (endDate) {
+    if (endDate && endDate !== '') {
       query += ` AND t."PostedOn" <= $${paramIndex++}`;
       params.push(endDate);
     }
-    if (category) {
+    
+    // If no date range provided, get data from the last 6 months
+    if (!startDate && !endDate) {
+      query += ` AND t."PostedOn" >= NOW() - INTERVAL '6 months'`;
+    }
+    
+    if (category && category !== 'all') {
       query += ` AND cat."Title" = $${paramIndex++}`;
       params.push(category);
     }
-    if (station) {
+    if (station && station !== 'all') {
       query += ` AND s."Title" = $${paramIndex++}`;
       params.push(station);
     }
     
-    query += ` GROUP BY DATE(t."PostedOn") ORDER BY date DESC`;
+    query += ` GROUP BY DATE(t."PostedOn") ORDER BY date DESC LIMIT 100`;
     
     const result = await pool.query(query, params);
     res.json(result.rows);
@@ -298,4 +309,22 @@ const generateInsight = (data: any[], query: string): string => {
   }
   
   return `Query returned ${data.length} records.`;
+};
+
+export const getDateRange = async (req: Request, res: Response) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.query(`
+      SELECT 
+        MIN(t."PostedOn") as earliest_date,
+        MAX(t."PostedOn") as latest_date,
+        COUNT(*) as total_records
+      FROM "Tallies" t
+      WHERE t."Deleted" = false
+    `);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error in getDateRange:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 };

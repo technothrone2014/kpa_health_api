@@ -18,7 +18,7 @@ import {
   getEmployeeViaVilliResults,
   getDashboardOverview
 } from '../controllers/analyticsController';
-import { getHealthTrends, getHighRiskPatients, exportReport, naturalLanguageQuery } from '../controllers/advancedAnalyticsController';
+import { getHealthTrends, getHighRiskPatients, exportReport, naturalLanguageQuery, getDateRange } from '../controllers/advancedAnalyticsController';
 
 const router = express.Router();
 
@@ -52,5 +52,6 @@ router.get('/trends', getHealthTrends);
 router.get('/high-risk-patients', getHighRiskPatients);
 router.get('/export', exportReport);
 router.post('/ai-query', naturalLanguageQuery);
+router.get('/date-range', getDateRange);
 
 export default router;
