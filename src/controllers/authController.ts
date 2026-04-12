@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
-import authService from '../services/authService';
+import authService from '../services/authService.js';
 import { getAuditLogs } from '../services/auditService.js';
 
-export const login = async (req: Request, res: Response) => {
+export const loginWithPassword = async (req: Request, res: Response) => {
   try {
     const { identifier, password } = req.body;
     const ipAddress = req.ip || req.socket.remoteAddress || null;
@@ -11,11 +11,11 @@ export const login = async (req: Request, res: Response) => {
     if (!identifier || !password) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Email/Username and password are required' 
+        message: 'Email/Username/Phone and password are required' 
       });
     }
     
-    const result = await authService.login(identifier, password, ipAddress, userAgent);
+    const result = await authService.loginWithPassword(identifier, password, ipAddress, userAgent);
     
     if (!result.success) {
       return res.status(401).json(result);
@@ -24,6 +24,35 @@ export const login = async (req: Request, res: Response) => {
     res.json(result);
   } catch (error) {
     console.error('Login error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
+  }
+};
+
+export const loginWithOTP = async (req: Request, res: Response) => {
+  try {
+    const { identifier } = req.body;
+    const ipAddress = req.ip || req.socket.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+    
+    if (!identifier) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email/Username/Phone is required' 
+      });
+    }
+    
+    const result = await authService.loginWithOTP(identifier, ipAddress, userAgent);
+    
+    if (!result.success) {
+      return res.status(401).json(result);
+    }
+    
+    res.json(result);
+  } catch (error) {
+    console.error('OTP login error:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Internal server error' 
@@ -40,7 +69,7 @@ export const verifyOTP = async (req: Request, res: Response) => {
     if (!identifier || !otp) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Email/Username and OTP are required' 
+        message: 'Identifier and OTP are required' 
       });
     }
     
@@ -134,7 +163,7 @@ export const getAuditTrail = async (req: Request, res: Response) => {
     const token = req.headers.authorization?.replace('Bearer ', '');
     const decoded = authService.verifyToken(token);
     
-    if (!decoded || !decoded.roles?.includes('Admin')) {
+    if (!decoded || !decoded.roles?.includes('Administrator')) {
       return res.status(403).json({ success: false, message: 'Admin access required' });
     }
     

@@ -2,17 +2,11 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import otpGenerator from 'otp-generator';
 import { poolPromise } from '../db/pool';
-import { sendEmailOTP } from './emailService';
+import { sendEmailOTP } from './emailService.js';
 import { auditLog } from './auditService.js';
 
-// Ensure JWT_SECRET is defined
 const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-me-in-production';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
-
-// Validate JWT_SECRET at startup
-if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-  console.warn('⚠️ WARNING: JWT_SECRET is not set in production environment!');
-}
 
 export interface User {
   Id: number;
@@ -32,6 +26,7 @@ export interface AuthResponse {
   refreshToken?: string;
   user?: Partial<User>;
   requiresOTP?: boolean;
+  roles?: string[];
 }
 
 class AuthService {
@@ -58,8 +53,6 @@ class AuthService {
   // Generate JWT tokens
   generateTokens(userId: number, email: string, roles: string[]): { token: string; refreshToken: string } {
     const payload = { userId, email, roles };
-    
-    // Ensure JWT_SECRET is a string
     const secret = String(JWT_SECRET);
     const expiresIn = String(JWT_EXPIRES_IN);
     
@@ -80,6 +73,22 @@ class AuthService {
     }
   }
 
+  // Find user by identifier (email, username, or phone number)
+  async findUserByIdentifier(identifier: string): Promise<any> {
+    const pool = await poolPromise;
+    
+    // Check by email, username, or phone number
+    const result = await pool.query(
+      `SELECT * FROM "Users" 
+       WHERE ("Email" = $1 OR "UserName" = $1 OR "PhoneNumber" = $1) 
+       AND "Status" = true
+       AND ("LockoutEnd" IS NULL OR "LockoutEnd" < NOW())`,
+      [identifier.toLowerCase()]
+    );
+    
+    return result.rows.length > 0 ? result.rows[0] : null;
+  }
+
   // Get user roles
   async getUserRoles(userId: number): Promise<string[]> {
     const pool = await poolPromise;
@@ -93,8 +102,15 @@ class AuthService {
   }
 
   // Send OTP via email using Brevo
-  async sendOTPEmail(email: string, otp: string): Promise<boolean> {
-    return await sendEmailOTP(email, otp);
+  async sendOTPEmail(email: string, otp: string, userName?: string): Promise<boolean> {
+    return await sendEmailOTP(email, otp, userName);
+  }
+
+  // Send OTP via SMS (future implementation)
+  async sendOTPSMS(phoneNumber: string, otp: string): Promise<boolean> {
+    // TODO: Implement SMS sending via Celcom Africa
+    console.log(`📱 SMS OTP ${otp} would be sent to ${phoneNumber}`);
+    return true; // Placeholder
   }
 
   // Store OTP in database
@@ -139,62 +155,35 @@ class AuthService {
     return { valid: true, userId: record.UserId };
   }
 
-  // Login with email/username and password
-  async login(identifier: string, password: string, ipAddress: string, userAgent: string): Promise<AuthResponse> {
-    const pool = await poolPromise;
+  // Login with password
+  async loginWithPassword(identifier: string, password: string, ipAddress: string, userAgent: string): Promise<AuthResponse> {
+    const user = await this.findUserByIdentifier(identifier);
     
-    // Check by email or username
-    const result = await pool.query(
-      `SELECT * FROM "Users" 
-       WHERE ("Email" = $1 OR "UserName" = $1) 
-       AND "Status" = true
-       AND ("LockoutEnd" IS NULL OR "LockoutEnd" < NOW())`,
-      [identifier.toLowerCase()]
-    );
-    
-    if (result.rows.length === 0) {
+    if (!user) {
       await auditLog(null, 'LOGIN_FAILED', 'User', identifier, null, null, ipAddress, userAgent);
-      return { success: false, message: 'Invalid email/username or password' };
+      return { success: false, message: 'Invalid credentials' };
     }
-    
-    const user = result.rows[0];
     
     // Check if password hash exists
     if (!user.PasswordHash) {
       await auditLog(user.Id, 'LOGIN_FAILED', 'User', user.Email, null, null, ipAddress, userAgent);
-      return { success: false, message: 'Account not configured for password login' };
+      return { success: false, message: 'Please use OTP login for this account' };
     }
     
     // Verify password
     const isValid = await this.verifyPassword(password, user.PasswordHash);
     if (!isValid) {
-      // Increment failed attempts
-      await pool.query(
-        `UPDATE "Users" SET "AccessFailedCount" = "AccessFailedCount" + 1 WHERE "Id" = $1`,
-        [user.Id]
-      );
-      
       await auditLog(user.Id, 'LOGIN_FAILED', 'User', user.Email, null, null, ipAddress, userAgent);
-      return { success: false, message: 'Invalid email/username or password' };
+      return { success: false, message: 'Invalid credentials' };
     }
     
-    // Reset failed attempts on successful password
-    await pool.query(
-      `UPDATE "Users" SET "AccessFailedCount" = 0 WHERE "Id" = $1`,
-      [user.Id]
-    );
+    // Get user roles
+    const roles = await this.getUserRoles(user.Id);
     
-    // Generate and send OTP
+    // Generate OTP for 2FA
     const otp = this.generateOTP();
     await this.storeOTP(user.Id, user.Email, otp, 'email');
-    
-    // Send OTP via email
-    const emailSent = await this.sendOTPEmail(user.Email, otp);
-    
-    if (!emailSent) {
-      await auditLog(user.Id, 'OTP_FAILED', 'User', user.Email, null, null, ipAddress, userAgent);
-      return { success: false, message: 'Failed to send verification code' };
-    }
+    await this.sendOTPEmail(user.Email, otp, user.FirstName);
     
     await auditLog(user.Id, 'OTP_SENT', 'User', user.Email, null, null, ipAddress, userAgent);
     
@@ -208,15 +197,57 @@ class AuthService {
         FirstName: user.FirstName,
         LastName: user.LastName,
         PhoneNumber: user.PhoneNumber,
-        TwoFactorEnabled: user.TwoFactorEnabled,
-      }
+      },
+      roles
     };
   }
-  
+
+  // Login with OTP only (no password required)
+  async loginWithOTP(identifier: string, ipAddress: string, userAgent: string): Promise<AuthResponse> {
+    const user = await this.findUserByIdentifier(identifier);
+    
+    if (!user) {
+      await auditLog(null, 'LOGIN_FAILED', 'User', identifier, null, null, ipAddress, userAgent);
+      return { success: false, message: 'User not found' };
+    }
+    
+    // Generate OTP
+    const otp = this.generateOTP();
+    await this.storeOTP(user.Id, user.Email, otp, 'email');
+    
+    // Send OTP via email (and SMS if phone number exists)
+    const emailSent = await this.sendOTPEmail(user.Email, otp, user.FirstName);
+    
+    if (user.PhoneNumber) {
+      await this.sendOTPSMS(user.PhoneNumber, otp);
+    }
+    
+    if (!emailSent) {
+      await auditLog(user.Id, 'OTP_FAILED', 'User', user.Email, null, null, ipAddress, userAgent);
+      return { success: false, message: 'Failed to send verification code' };
+    }
+    
+    const roles = await this.getUserRoles(user.Id);
+    
+    await auditLog(user.Id, 'OTP_SENT', 'User', user.Email, null, null, ipAddress, userAgent);
+    
+    return {
+      success: true,
+      message: 'Verification code sent to your email' + (user.PhoneNumber ? ' and phone' : ''),
+      requiresOTP: true,
+      user: {
+        Id: user.Id,
+        Email: user.Email,
+        FirstName: user.FirstName,
+        LastName: user.LastName,
+        PhoneNumber: user.PhoneNumber,
+      },
+      roles
+    };
+  }
+
   // Verify OTP and complete login
   async verifyLogin(identifier: string, otp: string, ipAddress: string, userAgent: string): Promise<AuthResponse> {
-    const pool = await poolPromise;
-    
     // Verify OTP
     const { valid, userId } = await this.verifyOTP(identifier, otp);
     if (!valid) {
@@ -225,6 +256,7 @@ class AuthService {
     }
     
     // Get user
+    const pool = await poolPromise;
     const result = await pool.query(
       `SELECT * FROM "Users" WHERE "Id" = $1 AND "Status" = true`,
       [userId]
@@ -260,7 +292,8 @@ class AuthService {
         FirstName: user.FirstName,
         LastName: user.LastName,
         PhoneNumber: user.PhoneNumber,
-      }
+      },
+      roles
     };
   }
   
@@ -290,71 +323,32 @@ class AuthService {
     
     return { ...user, roles };
   }
-  
-  // Enable/Disable 2FA for user
-  async toggleTwoFactor(userId: number, enabled: boolean): Promise<void> {
-    const pool = await poolPromise;
-    await pool.query(
-      `UPDATE "Users" SET "TwoFactorEnabled" = $1 WHERE "Id" = $2`,
-      [enabled, userId]
-    );
-  }
-  
-  // Create user from existing SQL Server data (migration helper)
-  async createUserFromSqlServer(userData: any): Promise<void> {
-    const pool = await poolPromise;
+
+  // Migrate roles from SQL Server
+  async migrateRoles(): Promise<void> {
+    // This would be called from migration script
+    const defaultRoles = [
+      'Administrator',
+      'Support',
+      'FieldAgent',
+      'LabAssistant',
+      'OncologyTechnician',
+      'Epidemiologist',
+      'Guest'
+    ];
     
-    await pool.query(
-      `INSERT INTO "Users" (
-        "Id", "FirstName", "LastName", "RegDate", "Status", "UserName", 
-        "NormalizedUserName", "Email", "NormalizedEmail", "EmailConfirmed",
-        "PasswordHash", "PhoneNumber", "PhoneNumberConfirmed", "TwoFactorEnabled",
-        "LockoutEnabled", "AccessFailedCount"
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-      ON CONFLICT ("Id") DO UPDATE SET
-        "FirstName" = EXCLUDED."FirstName",
-        "LastName" = EXCLUDED."LastName",
-        "Email" = EXCLUDED."Email",
-        "PhoneNumber" = EXCLUDED."PhoneNumber"`,
-      [
-        userData.Id, userData.FirstName, userData.LastName, userData.RegDate,
-        userData.Status, userData.UserName, userData.NormalizedUserName,
-        userData.Email, userData.NormalizedEmail, userData.EmailConfirmed,
-        userData.PasswordHash, userData.PhoneNumber, userData.PhoneNumberConfirmed,
-        userData.TwoFactorEnabled, userData.LockoutEnabled, userData.AccessFailedCount
-      ]
-    );
-  }
-  
-  // Create first admin user (run once)
-  async createAdminUser(): Promise<void> {
     const pool = await poolPromise;
     
-    const existingAdmin = await pool.query(`SELECT * FROM "Users" WHERE "Email" = $1`, ['admin@kpa-health.co.ke']);
-    
-    if (existingAdmin.rows.length === 0) {
-      const hashedPassword = await this.hashPassword('Admin@123');
+    for (const roleName of defaultRoles) {
       await pool.query(
-        `INSERT INTO "Users" ("Email", "UserName", "PasswordHash", "FirstName", "LastName", "Status", "EmailConfirmed", "RegDate")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        ['admin@kpa-health.co.ke', 'admin', hashedPassword, 'System', 'Administrator', true, true, new Date()]
+        `INSERT INTO "Roles" ("Name", "NormalizedName") 
+         VALUES ($1, $2)
+         ON CONFLICT ("Name") DO NOTHING`,
+        [roleName, roleName.toUpperCase()]
       );
-      
-      // Get the admin user id
-      const adminResult = await pool.query(`SELECT "Id" FROM "Users" WHERE "Email" = $1`, ['admin@kpa-health.co.ke']);
-      const adminId = adminResult.rows[0].Id;
-      
-      // Assign admin role
-      const roleResult = await pool.query(`SELECT "Id" FROM "Roles" WHERE "Name" = 'Admin'`);
-      if (roleResult.rows.length > 0) {
-        await pool.query(
-          `INSERT INTO "UserRoles" ("UserId", "RoleId") VALUES ($1, $2)`,
-          [adminId, roleResult.rows[0].Id]
-        );
-      }
-      
-      console.log('✅ Admin user created: admin@kpa-health.co.ke / Admin@123');
     }
+    
+    console.log('✅ Roles migrated successfully');
   }
 }
 
