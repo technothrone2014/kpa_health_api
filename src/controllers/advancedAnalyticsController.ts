@@ -115,30 +115,30 @@ export const getHighRiskPatients = async (req: Request, res: Response) => {
     }
     
     const query = `
-      WITH patient_readings AS (
-        SELECT 
-          c."Id" as client_id,
-          c."FullName",
-          c."IDNumber",
-          c."PhoneNumber",
-          c."CategoryTitle",
-          c."StationTitle",
-          COUNT(*) as total_readings,
-          SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END) as abnormal_count,
-          ROUND((SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END)::numeric / COUNT(*) * 100), 2) as abnormal_percentage
-        FROM "Tallies" t
-        JOIN "Clients" c ON t."ClientId" = c."Id"
-        JOIN "BPINTValues" bp ON t."BPINTValueId" = bp."Id"
-        JOIN "BMIINTValues" bmi ON t."BMIINTValueId" = bmi."Id"
-        JOIN "RBSINTValues" rbs ON t."RBSINTValueId" = rbs."Id"
-        WHERE t."Deleted" = false
-          AND c."Deleted" = false
-        GROUP BY c."Id", c."FullName", c."IDNumber", c."PhoneNumber", c."CategoryTitle", c."StationTitle"
-      )
-      SELECT *
-      FROM patient_readings
-      WHERE abnormal_count >= $1
-        AND abnormal_percentage >= $2
+      SELECT 
+        c."Id" as client_id,
+        c."FullName",
+        c."IDNumber",
+        c."PhoneNumber",
+        cat."Title" as "CategoryTitle",
+        s."Title" as "StationTitle",
+        COUNT(*) as total_readings,
+        SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END) as abnormal_count,
+        ROUND((SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END) * 100.0 / COUNT(*))::numeric, 2) as abnormal_percentage
+      FROM "Tallies" t
+      JOIN "Clients" c ON t."ClientId" = c."Id"
+      JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      JOIN "Stations" s ON c."StationId" = s."Id"
+      JOIN "BPINTValues" bp ON t."BPINTValueId" = bp."Id"
+      JOIN "BMIINTValues" bmi ON t."BMIINTValueId" = bmi."Id"
+      JOIN "RBSINTValues" rbs ON t."RBSINTValueId" = rbs."Id"
+      WHERE t."Deleted" = false
+        AND c."Deleted" = false
+        AND cat."Deleted" = false
+        AND s."Deleted" = false
+      GROUP BY c."Id", c."FullName", c."IDNumber", c."PhoneNumber", cat."Title", s."Title"
+      HAVING SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END) >= $1
+        AND (SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) >= $2
       ORDER BY abnormal_percentage DESC
       LIMIT 50
     `;
