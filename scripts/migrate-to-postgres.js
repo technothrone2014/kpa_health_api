@@ -140,12 +140,10 @@ async function main() {
     
     // List of tables to migrate (from your SQL files)
     const tables = [
-      'Categories', 'Genders', 'Stations', 'Clients', 'Tallies',
-      'BPINTValues', 'BMIINTValues', 'RBSINTValues',
-      'Findings', 'BMDINTValues', 'FBSINTValues', 'HBA1CINTValues',
-      'Lipids', 'MicroalbuminINTValues', 'PSAINTValues',
-      'HepatitisBValues', 'HepatitisCValues',
-      'Oncologies', 'BreastExams', 'PAPSmears', 'ViaVillies'
+      'Categories', 'Genders', 'Stations', 'Clients', 'Tallies', 'Findings', 'Oncologies',
+      'Lipids', 'HepatitisBValues', 'HepatitisCValues','BreastExams', 'PAPSmears', 'ViaVillies',
+      'BPINTValues', 'BMIINTValues', 'RBSINTValues', 'BMDINTValues', 'FBSINTValues', 'HBA1CINTValues',
+      'PSAINTValues', 'MicroalbuminINTValues',
     ];
     
     for (const table of tables) {

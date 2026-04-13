@@ -15,6 +15,8 @@ import authRouter from './routes/auth.js';
 import { errorHandler } from "./middleware/errorHandler";
 import logger from "./utils/logger";
 import { testEmailConnection } from './services/emailService.js';
+import syncService from './services/syncService';
+import dataCaptureRouter from './routes/dataCapture';
 
 const app = express();
 
@@ -120,6 +122,18 @@ app.get('/api/v1/email/test', async (_req, res) => {
   const result = await testEmailConnection();
   res.json(result);
 });
+
+app.get('/api/v1/sync/status', async (req, res) => {
+  const status = await syncService.getSyncStatus();
+  res.json(status);
+});
+
+app.post('/api/v1/sync/manual', async (req, res) => {
+  const result = await syncService.manualSync();
+  res.json(result);
+});
+
+app.use('/api/v1', dataCaptureRouter);
 
 // Global error handler
 app.use(errorHandler);
