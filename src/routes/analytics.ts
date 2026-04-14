@@ -30,7 +30,8 @@ import {
   getMultiVisitAbnormal,
   getStations,
   getCategories,
-  getDataDateRange
+  getDataDateRange,
+  getRBSDistribution
 } from '../controllers/advancedAnalyticsController';
 
 const router = express.Router();
@@ -51,6 +52,7 @@ router.get('/employees/lipid-profile', getEmployeeLipidProfileResults);
 router.get('/employees/microalbumin', getEmployeeMicroalbuminResults);
 router.get('/employees/psa', getEmployeePSAResults);
 router.get('/employees/hepatitis', getEmployeeHepatitisResults);
+router.get('/employees/rbs', getRBSDistribution);
 
 // Oncology endpoints
 router.get('/employees/breast-exam', getEmployeeBreastExamResults);

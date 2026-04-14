@@ -387,3 +387,57 @@ export const getDataDateRange = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
+
+// Get RBS distribution for charts
+export const getRBSDistribution = async (req: Request, res: Response) => {
+  try {
+    const pool = await poolPromise;
+    const { startDate, endDate, category, station, gender } = req.query;
+    
+    let query = `
+      SELECT 
+        rbs."Title" as "RBSCategory",
+        COUNT(*) as "Count"
+      FROM "Tallies" t
+      JOIN "Clients" c ON t."ClientId" = c."Id"
+      JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      JOIN "RBSINTValues" rbs ON t."RBSINTValueId" = rbs."Id"
+      LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+      LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
+      WHERE t."Deleted" = false AND t."Status" = true
+        AND c."Deleted" = false
+    `;
+    
+    const params: any[] = [];
+    let paramIndex = 1;
+    
+    if (startDate) {
+      query += ` AND t."PostedOn" >= $${paramIndex++}`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      query += ` AND t."PostedOn" <= $${paramIndex++}`;
+      params.push(endDate);
+    }
+    if (category && category !== 'all') {
+      query += ` AND cat."Title" = $${paramIndex++}`;
+      params.push(category);
+    }
+    if (station && station !== 'all') {
+      query += ` AND s."Title" = $${paramIndex++}`;
+      params.push(station);
+    }
+    if (gender && gender !== 'all') {
+      query += ` AND g."Title" = $${paramIndex++}`;
+      params.push(gender);
+    }
+    
+    query += ` GROUP BY rbs."Title" ORDER BY "Count" DESC`;
+    
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error in getRBSDistribution:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
