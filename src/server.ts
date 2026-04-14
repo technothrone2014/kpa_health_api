@@ -17,6 +17,7 @@ import logger from "./utils/logger";
 import { testEmailConnection } from './services/emailService.js';
 import syncService from './services/syncService';
 import dataCaptureRouter from './routes/dataCapture';
+import usersRoutes from "./routes/users";
 
 const app = express();
 
@@ -134,6 +135,8 @@ app.post('/api/v1/sync/manual', async (req, res) => {
 });
 
 app.use('/api/v1', dataCaptureRouter);
+
+app.use("/api/v1/users", usersRoutes);
 
 // Global error handler
 app.use(errorHandler);
