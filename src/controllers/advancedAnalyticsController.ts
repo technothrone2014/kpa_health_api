@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { poolPromise } from '../db/pool';
+import { poolPromise } from '../db/pool';import advancedAnalyticsService from '../services/advancedAnalyticsService';
 
 // Dynamic filtering interface
 interface FilterParams {
@@ -106,58 +106,6 @@ export const getHealthTrends = async (req: Request, res: Response) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Error in getHealthTrends:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
-
-// Identify high-risk patients with consecutive abnormal readings
-export const getHighRiskPatients = async (req: Request, res: Response) => {
-  try {
-    const pool = await poolPromise;
-    const { condition = 'hypertension', consecutiveCount = 2, threshold = 50 } = req.query;
-    
-    let conditionFilter = '';
-    if (condition === 'hypertension') {
-      conditionFilter = `bp."Title" IN ('STAGE I HYPERTENSION', 'STAGE II HYPERTENSION')`;
-    } else if (condition === 'pre_hypertension') {
-      conditionFilter = `bp."Title" = 'PRE-HYPERTENSION'`;
-    } else if (condition === 'obesity') {
-      conditionFilter = `bmi."Title" = 'OBESE'`;
-    }
-    
-    const query = `
-      SELECT 
-        c."Id" as client_id,
-        c."FullName",
-        c."IDNumber",
-        c."PhoneNumber",
-        cat."Title" as "CategoryTitle",
-        s."Title" as "StationTitle",
-        COUNT(*) as total_readings,
-        SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END) as abnormal_count,
-        ROUND((SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END) * 100.0 / COUNT(*))::numeric, 2) as abnormal_percentage
-      FROM "Tallies" t
-      JOIN "Clients" c ON t."ClientId" = c."Id"
-      JOIN "Categories" cat ON c."CategoryId" = cat."Id"
-      JOIN "Stations" s ON c."StationId" = s."Id"
-      JOIN "BPINTValues" bp ON t."BPINTValueId" = bp."Id"
-      JOIN "BMIINTValues" bmi ON t."BMIINTValueId" = bmi."Id"
-      JOIN "RBSINTValues" rbs ON t."RBSINTValueId" = rbs."Id"
-      WHERE t."Deleted" = false
-        AND c."Deleted" = false
-        AND cat."Deleted" = false
-        AND s."Deleted" = false
-      GROUP BY c."Id", c."FullName", c."IDNumber", c."PhoneNumber", cat."Title", s."Title"
-      HAVING SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END) >= $1
-        AND (SUM(CASE WHEN ${conditionFilter} THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) >= $2
-      ORDER BY abnormal_percentage DESC
-      LIMIT 50
-    `;
-    
-    const result = await pool.query(query, [consecutiveCount, threshold]);
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Error in getHighRiskPatients:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -326,5 +274,116 @@ export const getDateRange = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error in getDateRange:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+
+// Get summary metrics
+export const getSummaryMetrics = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string,
+      category: req.query.category as string,
+      station: req.query.station as string,
+      gender: req.query.gender as string
+    };
+    
+    const metrics = await advancedAnalyticsService.getSummaryMetrics(filters);
+    res.json({ success: true, data: metrics });
+  } catch (error) {
+    console.error('Error in getSummaryMetrics:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// Get abnormal readings distribution
+export const getAbnormalReadings = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string,
+      category: req.query.category as string,
+      station: req.query.station as string,
+      gender: req.query.gender as string
+    };
+    
+    const readings = await advancedAnalyticsService.getAbnormalReadings(filters);
+    res.json({ success: true, data: readings });
+  } catch (error) {
+    console.error('Error in getAbnormalReadings:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// Get high-risk patients
+export const getHighRiskPatients = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string,
+      category: req.query.category as string,
+      station: req.query.station as string,
+      gender: req.query.gender as string
+    };
+    
+    const patients = await advancedAnalyticsService.getHighRiskPatients(filters);
+    res.json({ success: true, data: patients });
+  } catch (error) {
+    console.error('Error in getHighRiskPatients:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// Get multi-visit patients with abnormal readings
+export const getMultiVisitAbnormal = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string,
+      category: req.query.category as string,
+      station: req.query.station as string,
+      gender: req.query.gender as string,
+      minVisits: req.query.minVisits ? parseInt(req.query.minVisits as string) : 2
+    };
+    
+    const patients = await advancedAnalyticsService.getMultiVisitAbnormalPatients(filters);
+    res.json({ success: true, data: patients });
+  } catch (error) {
+    console.error('Error in getMultiVisitAbnormal:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// Get stations for filter dropdown
+export const getStations = async (req: Request, res: Response) => {
+  try {
+    const stations = await advancedAnalyticsService.getStations();
+    res.json({ success: true, data: stations });
+  } catch (error) {
+    console.error('Error in getStations:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// Get categories for filter dropdown
+export const getCategories = async (req: Request, res: Response) => {
+  try {
+    const categories = await advancedAnalyticsService.getCategories();
+    res.json({ success: true, data: categories });
+  } catch (error) {
+    console.error('Error in getCategories:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// Get data date range
+export const getDataDateRange = async (req: Request, res: Response) => {
+  try {
+    const dateRange = await advancedAnalyticsService.getDataDateRange();
+    res.json({ success: true, data: dateRange });
+  } catch (error) {
+    console.error('Error in getDataDateRange:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };

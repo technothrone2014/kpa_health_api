@@ -18,7 +18,20 @@ import {
   getEmployeeViaVilliResults,
   getDashboardOverview
 } from '../controllers/analyticsController';
-import { getHealthTrends, getHighRiskPatients, exportReport, naturalLanguageQuery, getDateRange } from '../controllers/advancedAnalyticsController';
+
+import {
+  getHealthTrends,
+  getHighRiskPatients as getAdvancedHighRiskPatients,
+  exportReport,
+  naturalLanguageQuery,
+  getDateRange,
+  getSummaryMetrics,
+  getAbnormalReadings,
+  getMultiVisitAbnormal,
+  getStations,
+  getCategories,
+  getDataDateRange
+} from '../controllers/advancedAnalyticsController';
 
 const router = express.Router();
 
@@ -49,9 +62,15 @@ router.get('/dashboard/overview', getDashboardOverview);
 
 // Advanced Analytics Routes
 router.get('/trends', getHealthTrends);
-router.get('/high-risk-patients', getHighRiskPatients);
+router.get('/high-risk-patients', getAdvancedHighRiskPatients);
 router.get('/export', exportReport);
 router.post('/ai-query', naturalLanguageQuery);
 router.get('/date-range', getDateRange);
+router.get('/summary-metrics', getSummaryMetrics);
+router.get('/abnormal-readings', getAbnormalReadings);
+router.get('/multi-visit-abnormal', getMultiVisitAbnormal);
+router.get('/stations', getStations);
+router.get('/categories', getCategories);
+router.get('/data-date-range', getDataDateRange);
 
 export default router;
