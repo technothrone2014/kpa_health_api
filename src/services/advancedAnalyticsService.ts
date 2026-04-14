@@ -276,22 +276,27 @@ class AdvancedAnalyticsService {
     const pool = await poolPromise;
     const params: any[] = [];
     let whereClause = '';
+    let paramIndex = 1;
     
     if (filters.startDate) {
-      whereClause += ` AND t."PostedOn" >= $${params.length + 1}`;
+      whereClause += ` AND t."PostedOn" >= $${paramIndex++}`;
       params.push(filters.startDate);
     }
     if (filters.endDate) {
-      whereClause += ` AND t."PostedOn" <= $${params.length + 1}`;
+      whereClause += ` AND t."PostedOn" <= $${paramIndex++}`;
       params.push(filters.endDate);
     }
     if (filters.category && filters.category !== 'all') {
-      whereClause += ` AND cat."Title" = $${params.length + 1}`;
+      whereClause += ` AND cat."Title" = $${paramIndex++}`;
       params.push(filters.category);
     }
     if (filters.station && filters.station !== 'all') {
-      whereClause += ` AND s."Title" = $${params.length + 1}`;
+      whereClause += ` AND s."Title" = $${paramIndex++}`;
       params.push(filters.station);
+    }
+    if (filters.gender && filters.gender !== 'all') {
+      whereClause += ` AND g."Title" = $${paramIndex++}`;
+      params.push(filters.gender);
     }
     
     const result = await pool.query(`
@@ -299,10 +304,13 @@ class AdvancedAnalyticsService {
         SELECT 
           c."Id" as client_id,
           c."FullName",
+          c."FirstName",
+          c."LastName",
           c."IDNumber",
           c."PhoneNumber",
           cat."Title" as category,
           s."Title" as station,
+          g."Title" as gender,
           COUNT(DISTINCT t."Id") as total_visits,
           COUNT(DISTINCT CASE WHEN bp."Title" != 'NORMAL' THEN t."Id" END) as abnormal_bp_count,
           COUNT(DISTINCT CASE WHEN bmi."Title" NOT IN ('NORMAL') THEN t."Id" END) as abnormal_bmi_count,
@@ -312,21 +320,23 @@ class AdvancedAnalyticsService {
         JOIN "Tallies" t ON c."Id" = t."ClientId"
         JOIN "Categories" cat ON c."CategoryId" = cat."Id"
         LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+        LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
         JOIN "BPINTValues" bp ON t."BPINTValueId" = bp."Id"
         JOIN "BMIINTValues" bmi ON t."BMIINTValueId" = bmi."Id"
         JOIN "RBSINTValues" rbs ON t."RBSINTValueId" = rbs."Id"
         WHERE t."Deleted" = false AND t."Status" = true
           AND c."Deleted" = false
-        ${whereClause}
-        GROUP BY c."Id", c."FullName", c."IDNumber", c."PhoneNumber", cat."Title", s."Title"
+          ${whereClause}
+        GROUP BY c."Id", c."FullName", c."FirstName", c."LastName", c."IDNumber", c."PhoneNumber", cat."Title", s."Title", g."Title"
       ),
       risk_calc AS (
         SELECT *,
+          (abnormal_bp_count + abnormal_bmi_count + abnormal_rbs_count) as total_abnormal,
           CASE 
             WHEN abnormal_bp_count > 0 AND abnormal_bmi_count > 0 AND abnormal_rbs_count > 0 THEN 3
             WHEN (abnormal_bp_count > 0 AND abnormal_bmi_count > 0) OR
-                 (abnormal_bp_count > 0 AND abnormal_rbs_count > 0) OR
-                 (abnormal_bmi_count > 0 AND abnormal_rbs_count > 0) THEN 2
+                (abnormal_bp_count > 0 AND abnormal_rbs_count > 0) OR
+                (abnormal_bmi_count > 0 AND abnormal_rbs_count > 0) THEN 2
             WHEN abnormal_bp_count > 0 OR abnormal_bmi_count > 0 OR abnormal_rbs_count > 0 THEN 1
             ELSE 0
           END as conditions_count,
@@ -334,14 +344,28 @@ class AdvancedAnalyticsService {
             WHEN (abnormal_bp_count > 0 AND abnormal_bmi_count > 0 AND abnormal_rbs_count > 0) 
               OR (abnormal_bp_count >= 2 AND abnormal_bmi_count >= 2) THEN 'HIGH'
             WHEN (abnormal_bp_count > 0 AND abnormal_bmi_count > 0) OR
-                 (abnormal_bp_count > 0 AND abnormal_rbs_count > 0) OR
-                 (abnormal_bmi_count > 0 AND abnormal_rbs_count > 0) THEN 'MEDIUM'
+                (abnormal_bp_count > 0 AND abnormal_rbs_count > 0) OR
+                (abnormal_bmi_count > 0 AND abnormal_rbs_count > 0) THEN 'MEDIUM'
             WHEN abnormal_bp_count > 0 OR abnormal_bmi_count > 0 OR abnormal_rbs_count > 0 THEN 'LOW'
             ELSE 'NONE'
           END as risk_level
         FROM patient_metrics
       )
-      SELECT *
+      SELECT 
+        client_id,
+        "FullName" as fullname,
+        "IDNumber" as idnumber,
+        "PhoneNumber" as phonenumber,
+        category,
+        station,
+        gender,
+        total_visits,
+        abnormal_bp_count,
+        abnormal_bmi_count,
+        abnormal_rbs_count,
+        conditions_count,
+        risk_level,
+        last_visit_date
       FROM risk_calc
       WHERE conditions_count > 0
       ORDER BY conditions_count DESC, total_visits DESC
@@ -389,6 +413,7 @@ class AdvancedAnalyticsService {
         c."PhoneNumber" as phonenumber,
         cat."Title" as category,
         s."Title" as station,
+        g."Title" as gender,
         COUNT(DISTINCT t."Id") as total_visits,
         COUNT(DISTINCT CASE WHEN bp."Title" != 'NORMAL' THEN t."Id" END) as abnormal_bp_visits,
         COUNT(DISTINCT CASE WHEN bmi."Title" NOT IN ('NORMAL') THEN t."Id" END) as abnormal_bmi_visits,
@@ -404,7 +429,7 @@ class AdvancedAnalyticsService {
       WHERE t."Deleted" = false AND t."Status" = true
         AND c."Deleted" = false
         ${whereClause}
-      GROUP BY c."Id", c."FullName", c."IDNumber", c."PhoneNumber", cat."Title", s."Title"
+      GROUP BY c."Id", c."FullName", c."IDNumber", c."PhoneNumber", cat."Title", s."Title", g."Title"
       HAVING COUNT(DISTINCT t."Id") >= $${paramIndex++}
       ORDER BY total_visits DESC
       LIMIT 100
