@@ -151,7 +151,19 @@ export const getCurrentUser = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    res.json({ success: true, user });
+    // Return in the format expected by the frontend
+    res.json({ 
+      success: true, 
+      user: {
+        Id: user.Id,
+        Email: user.Email,
+        FirstName: user.FirstName,
+        LastName: user.LastName,
+        PhoneNumber: user.PhoneNumber,
+        UserName: user.UserName,
+        roles: user.roles || []
+      }
+    });
   } catch (error) {
     console.error('Get current user error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
