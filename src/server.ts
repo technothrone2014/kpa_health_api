@@ -1,6 +1,6 @@
-// kpa_health_api/src/server.ts
+// server.ts - CORRECTED ORDER
+
 import dotenv from "dotenv";
-// Load env vars first
 dotenv.config();
 
 import express, { Request, Response, NextFunction } from "express";
@@ -25,29 +25,22 @@ const app = express();
 app.use(helmet());
 app.use(compression());
 
-// CORS Configuration - Allow multiple origins
+// CORS Configuration
 const allowedOrigins = [
-  'http://localhost:5173',                          // Local development
-  'https://kpa-health-ui.onrender.com',             // Production frontend
-  process.env.FRONTEND_URL,                         // Custom frontend URL if set
-].filter((origin): origin is string => !!origin);  // Remove undefined/null values
+  'http://localhost:5173',
+  'https://kpa-health-ui.onrender.com',
+  process.env.FRONTEND_URL,
+].filter((origin): origin is string => !!origin);
 
-// CORS middleware
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps, curl, server-to-server)
-      if (!origin) {
-        return callback(null, true);
-      }
-      
-      // Check if the origin is allowed
+      if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         console.warn(`CORS blocked request from origin: ${origin}`);
-        // Still allow but log warning (or set to false to block)
-        callback(null, true); // Change to false to block unlisted origins
+        callback(null, true);
       }
     },
     credentials: true,
@@ -56,11 +49,11 @@ app.use(
   })
 );
 
-// Body parsers - IMPORTANT: These must come before route handlers
+// Body parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Request logging with origin
+// Request logging
 app.use((req: Request, res: Response, next: NextFunction) => {
   logger.info(`${req.method} ${req.path} - Origin: ${req.headers.origin || 'same-origin'}`);
   next();
@@ -86,6 +79,9 @@ app.get("/", (_req: Request, res: Response) => {
       dataCorrection: "/api/data-correction",
       analytics: "/api/v1/analytics",
       patients: "/api/v1/patients",
+      users: "/api/v1/users",
+      sync: "/api/v1/sync",
+      email: "/api/v1/email",
     },
     cors: {
       allowedOrigins,
@@ -94,12 +90,48 @@ app.get("/", (_req: Request, res: Response) => {
   });
 });
 
-// API Routes - ORDER MATTERS! More specific routes first, then general
+// ============================================
+// ✅ ALL API ROUTES - Must come BEFORE 404 handler
+// ============================================
+
+// Auth routes
 app.use("/api/v1/auth", authRouter);
+
+// Employee routes
 app.use("/api/v1/employees", employeesRouter);
+
+// Analytics routes
 app.use("/api/v1/analytics", analyticsRouter);
+
+// Patients routes
 app.use("/api/v1/patients", patientsRouter);
+
+// Data correction routes
 app.use("/api/data-correction", dataCorrectionRoutes);
+
+// ✅ Users routes - FIXED: Now registered BEFORE 404 handler
+app.use("/api/v1/users", usersRoutes);
+
+// Data capture routes
+app.use('/api/v1', dataCaptureRouter);
+
+// Email test route
+app.get('/api/v1/email/test', async (_req, res) => {
+  const result = await testEmailConnection();
+  res.json(result);
+});
+
+// Sync status route
+app.get('/api/v1/sync/status', async (req, res) => {
+  const status = await syncService.getSyncStatus();
+  res.json(status);
+});
+
+// Manual sync route
+app.post('/api/v1/sync/manual', async (req, res) => {
+  const result = await syncService.manualSync();
+  res.json(result);
+});
 
 // Test route for deployment verification
 app.get("/api/test", (_req: Request, res: Response) => {
@@ -111,7 +143,9 @@ app.get("/api/test", (_req: Request, res: Response) => {
   });
 });
 
-// 404 handler - This should be LAST before error handler
+// ============================================
+// ❌ 404 handler - MUST BE LAST before error handler
+// ============================================
 app.use((_req: Request, res: Response) => {
   res.status(404).json({
     success: false,
@@ -119,36 +153,25 @@ app.use((_req: Request, res: Response) => {
   });
 });
 
-app.get('/api/v1/email/test', async (_req, res) => {
-  const result = await testEmailConnection();
-  res.json(result);
-});
-
-app.get('/api/v1/sync/status', async (req, res) => {
-  const status = await syncService.getSyncStatus();
-  res.json(status);
-});
-
-app.post('/api/v1/sync/manual', async (req, res) => {
-  const result = await syncService.manualSync();
-  res.json(result);
-});
-
-app.use('/api/v1', dataCaptureRouter);
-
-app.use("/api/v1/users", usersRoutes);
-
-// Global error handler
+// Global error handler - MUST BE VERY LAST
 app.use(errorHandler);
 
-// Convert PORT to number and ensure it's valid
+// Start server
 const PORT: number = parseInt(process.env.PORT || "8080", 10);
 
 app.listen(PORT, '0.0.0.0', () => {
   logger.info(`🚀 Server ready at http://0.0.0.0:${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
   logger.info(`CORS allowed origins: ${allowedOrigins.join(', ')}`);
-  logger.info(`✅ Auth routes registered at /api/v1/auth`);
+  logger.info(`✅ Routes registered:`);
+  logger.info(`   - Auth: /api/v1/auth`);
+  logger.info(`   - Employees: /api/v1/employees`);
+  logger.info(`   - Analytics: /api/v1/analytics`);
+  logger.info(`   - Patients: /api/v1/patients`);
+  logger.info(`   - Data Correction: /api/data-correction`);
+  logger.info(`   - Users: /api/v1/users`);  // 👈 Confirm users route is registered
+  logger.info(`   - Sync: /api/v1/sync`);
+  logger.info(`   - Email: /api/v1/email`);
 });
 
 export default app;
