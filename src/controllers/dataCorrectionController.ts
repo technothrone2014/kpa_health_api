@@ -1,11 +1,16 @@
+// dataCorrectionController.ts
 import { Request, Response } from "express";
 import { poolPromise } from "../db/pool";
 
 /**
  * Correct StationId for Clients and Tallies
+ * Supports day operator (eq, gt, gte, lt, lte) for flexible date filtering
  */
 export const correctStationAssignments = async (req: Request, res: Response) => {
-  const { year, month, day, userId, stationId, beforeHour, beforeMinute } = req.body;
+  const { 
+    year, month, day, dayOperator = 'gte',
+    userId, stationId, beforeHour, beforeMinute 
+  } = req.body;
 
   if (!year || !month || !day || !userId || !stationId) {
     return res.status(400).json({ message: "Missing required parameters" });
@@ -13,6 +18,16 @@ export const correctStationAssignments = async (req: Request, res: Response) => 
 
   try {
     const pool = await poolPromise;
+
+    // Build the day condition based on operator
+    const operatorMap: Record<string, string> = {
+      'eq': '=',
+      'gt': '>',
+      'gte': '>=',
+      'lt': '<',
+      'lte': '<='
+    };
+    const sqlOperator = operatorMap[dayOperator] || '>=';
 
     // Build the time condition for PostgreSQL
     let timeCondition = '';
@@ -36,13 +51,15 @@ export const correctStationAssignments = async (req: Request, res: Response) => 
       SET "StationId" = $${paramIndex}
       WHERE EXTRACT(YEAR FROM "UpdatedOn") = $${paramIndex + 1}
         AND EXTRACT(MONTH FROM "UpdatedOn") = $${paramIndex + 2}
-        AND EXTRACT(DAY FROM "UpdatedOn") = $${paramIndex + 3}
+        AND EXTRACT(DAY FROM "UpdatedOn") ${sqlOperator} $${paramIndex + 3}
         AND "UserId" = $${paramIndex + 4}
         ${timeCondition}
+      RETURNING "Id"
     `;
     
-    await pool.query(talliesQuery, talliesParams);
-    console.log(`✅ Updated Tallies with stationId=${stationId}`);
+    const talliesResult = await pool.query(talliesQuery, talliesParams);
+    const talliesUpdated = talliesResult.rowCount || 0;
+    console.log(`✅ Updated ${talliesUpdated} Tallies with stationId=${stationId}`);
 
     // 🧩 Step 2: Update Clients related to affected Tallies
     const clientsParams: any[] = [];
@@ -67,17 +84,23 @@ export const correctStationAssignments = async (req: Request, res: Response) => 
       WHERE t."ClientId" = c."Id"
         AND EXTRACT(YEAR FROM t."UpdatedOn") = $${clientParamIndex + 1}
         AND EXTRACT(MONTH FROM t."UpdatedOn") = $${clientParamIndex + 2}
-        AND EXTRACT(DAY FROM t."UpdatedOn") = $${clientParamIndex + 3}
+        AND EXTRACT(DAY FROM t."UpdatedOn") ${sqlOperator} $${clientParamIndex + 3}
         AND t."UserId" = $${clientParamIndex + 4}
         ${clientTimeCondition}
+      RETURNING c."Id"
     `;
     
-    await pool.query(clientsQuery, clientsParams);
-    console.log(`✅ Updated Clients with stationId=${stationId}`);
+    const clientsResult = await pool.query(clientsQuery, clientsParams);
+    const clientsUpdated = clientsResult.rowCount || 0;
+    console.log(`✅ Updated ${clientsUpdated} Clients with stationId=${stationId}`);
 
     res.status(200).json({
-      message: "Station correction completed successfully",
-      params: { year, month, day, userId, stationId, beforeHour, beforeMinute },
+      message: `Station correction completed successfully. Updated ${talliesUpdated} tallies and ${clientsUpdated} clients.`,
+      summary: {
+        talliesUpdated,
+        clientsUpdated
+      },
+      params: { year, month, day, dayOperator, userId, stationId, beforeHour, beforeMinute },
     });
 
   } catch (err) {
