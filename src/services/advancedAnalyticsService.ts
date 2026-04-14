@@ -356,30 +356,37 @@ class AdvancedAnalyticsService {
     const pool = await poolPromise;
     const params: any[] = [];
     let whereClause = '';
+    let paramIndex = 1;
     
     if (filters.startDate) {
-      whereClause += ` AND t."PostedOn" >= $${params.length + 1}`;
+      whereClause += ` AND t."PostedOn" >= $${paramIndex++}`;
       params.push(filters.startDate);
     }
     if (filters.endDate) {
-      whereClause += ` AND t."PostedOn" <= $${params.length + 1}`;
+      whereClause += ` AND t."PostedOn" <= $${paramIndex++}`;
       params.push(filters.endDate);
     }
     if (filters.category && filters.category !== 'all') {
-      whereClause += ` AND cat."Title" = $${params.length + 1}`;
+      whereClause += ` AND cat."Title" = $${paramIndex++}`;
       params.push(filters.category);
     }
-    if (filters.minVisits) {
-      whereClause += ` HAVING COUNT(DISTINCT t."Id") >= $${params.length + 1}`;
-      params.push(filters.minVisits);
+    if (filters.station && filters.station !== 'all') {
+      whereClause += ` AND s."Title" = $${paramIndex++}`;
+      params.push(filters.station);
+    }
+    if (filters.gender && filters.gender !== 'all') {
+      whereClause += ` AND g."Title" = $${paramIndex++}`;
+      params.push(filters.gender);
     }
     
-    const result = await pool.query(`
+    const minVisits = filters.minVisits || 2;
+    
+    const query = `
       SELECT 
         c."Id" as client_id,
-        c."FullName",
-        c."IDNumber",
-        c."PhoneNumber",
+        c."FullName" as fullname,
+        c."IDNumber" as idnumber,
+        c."PhoneNumber" as phonenumber,
         cat."Title" as category,
         s."Title" as station,
         COUNT(DISTINCT t."Id") as total_visits,
@@ -390,18 +397,22 @@ class AdvancedAnalyticsService {
       JOIN "Tallies" t ON c."Id" = t."ClientId"
       JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+      LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
       JOIN "BPINTValues" bp ON t."BPINTValueId" = bp."Id"
       JOIN "BMIINTValues" bmi ON t."BMIINTValueId" = bmi."Id"
       JOIN "RBSINTValues" rbs ON t."RBSINTValueId" = rbs."Id"
       WHERE t."Deleted" = false AND t."Status" = true
         AND c."Deleted" = false
-      ${whereClause}
+        ${whereClause}
       GROUP BY c."Id", c."FullName", c."IDNumber", c."PhoneNumber", cat."Title", s."Title"
-      HAVING COUNT(DISTINCT t."Id") > 1
+      HAVING COUNT(DISTINCT t."Id") >= $${paramIndex++}
       ORDER BY total_visits DESC
       LIMIT 100
-    `, params);
+    `;
     
+    params.push(minVisits);
+    
+    const result = await pool.query(query, params);
     return result.rows;
   }
 
