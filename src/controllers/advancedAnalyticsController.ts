@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { poolPromise } from '../db/pool';import advancedAnalyticsService from '../services/advancedAnalyticsService';
 import clientAnalyticsService from '../services/clientAnalyticsService';
+import intelligentQueryService from '../services/intelligentQueryService';
 
 // Dynamic filtering interface
 interface FilterParams {
@@ -446,89 +447,29 @@ export const getRBSDistribution = async (req: Request, res: Response) => {
 // Intelligent natural language query with clinical context
 export const intelligentQuery = async (req: Request, res: Response) => {
   try {
-    const { query, filters, selectedFields } = req.body;
-    const startTime = Date.now();
+    const { query, filters } = req.body;
     
-    const pool = await poolPromise;
-    
-    // Build WHERE clause from filters
-    const params: any[] = [];
-    let whereClause = '';
-    let paramIndex = 1;
-    
-    if (filters?.startDate) {
-      whereClause += ` AND t."PostedOn" >= $${paramIndex++}`;
-      params.push(filters.startDate);
-    }
-    if (filters?.endDate) {
-      whereClause += ` AND t."PostedOn" <= $${paramIndex++}`;
-      params.push(filters.endDate);
-    }
-    if (filters?.category && filters.category !== 'all') {
-      whereClause += ` AND cat."Title" = $${paramIndex++}`;
-      params.push(filters.category);
-    }
-    if (filters?.station && filters.station !== 'all') {
-      whereClause += ` AND s."Title" = $${paramIndex++}`;
-      params.push(filters.station);
-    }
-    if (filters?.gender && filters.gender !== 'all') {
-      whereClause += ` AND g."Title" ILIKE $${paramIndex++}`;
-      params.push(filters.gender);
-    }
-
-    // Use the client analytics service to get enriched client data
-    const clientData = await clientAnalyticsService.getClientAnalytics(filters);
-    
-    // Parse query intent
-    const lowerQuery = query.toLowerCase();
-    let resultData: any[] = [];
-    let insight = '';
-    
-    if (lowerQuery.includes('high risk') || lowerQuery.includes('high-risk')) {
-      resultData = clientData.highRiskPatientsList;
-      insight = `Found ${resultData.length} high-risk clients with 2+ abnormal conditions. These clients require priority follow-up.`;
-    } else if (lowerQuery.includes('hypertension') || lowerQuery.includes('blood pressure')) {
-      resultData = clientData.highRiskPatientsList.filter((c: any) => 
-        c.bpStatus !== 'NORMAL' && c.bpStatus !== 'MIXED'
-      );
-      insight = `Identified ${resultData.length} clients with hypertension or pre-hypertension. Consider BP management programs.`;
-    } else if (lowerQuery.includes('obese') || lowerQuery.includes('overweight') || lowerQuery.includes('bmi')) {
-      resultData = clientData.highRiskPatientsList.filter((c: any) => 
-        c.bmiStatus !== 'NORMAL' && c.bmiStatus !== 'MIXED' && c.bmiStatus !== 'UNDERWEIGHT'
-      );
-      insight = `Found ${resultData.length} clients with elevated BMI (overweight/obese). Lifestyle intervention recommended.`;
-    } else if (lowerQuery.includes('diabetic') || lowerQuery.includes('blood sugar') || lowerQuery.includes('rbs')) {
-      resultData = clientData.highRiskPatientsList.filter((c: any) => 
-        c.rbsStatus !== 'NORMAL' && c.rbsStatus !== 'MIXED'
-      );
-      insight = `Identified ${resultData.length} clients with abnormal blood sugar levels. Diabetes screening and management needed.`;
-    } else if (lowerQuery.includes('healthy') || lowerQuery.includes('normal')) {
-      // Need to fetch healthy clients
-      resultData = []; // Would need a separate query
-      insight = `Query for healthy clients would return those with all normal readings.`;
-    } else {
-      // Default: return high risk list
-      resultData = clientData.highRiskPatientsList;
-      insight = `Showing ${resultData.length} clients. Refine your query for more specific results.`;
+    if (!query) {
+      return res.status(400).json({ success: false, error: 'Query is required' });
     }
     
-    const executionTime = `${Date.now() - startTime}ms`;
+    const result = await intelligentQueryService.executeQuery(query, filters);
     
     res.json({
       success: true,
       query,
-      count: resultData.length,
-      executionTime,
-      insight,
-      data: resultData,
-      filters: {
-        applied: !!filters,
-        dateRange: filters ? `${filters.startDate} to ${filters.endDate}` : 'All time'
-      }
+      count: result.count,
+      executionTime: result.executionTime,
+      insight: result.insight,
+      data: result.data,
+      parsedIntent: result.parsedIntent
     });
   } catch (error) {
     console.error('Error in intelligentQuery:', error);
-    res.status(500).json({ success: false, error: 'Query processing failed' });
+    res.status(500).json({ 
+      success: false, 
+      error: 'Query processing failed',
+      message: 'Try rephrasing your query or check your filters.'
+    });
   }
 };
