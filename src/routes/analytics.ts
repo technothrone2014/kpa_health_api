@@ -37,7 +37,8 @@ import {
   getStations,
   getCategories,
   getDataDateRange,
-  getRBSDistribution
+  getRBSDistribution,
+  intelligentQuery
 } from '../controllers/advancedAnalyticsController';
 
 import { getGenderDistribution } from '../controllers/analyticsController';
@@ -93,5 +94,7 @@ router.get('/clients/gender-distribution', getGenderDistribution);
 // Participation Trends Routes
 router.get('/participation/periods', getParticipationByPeriods);
 router.get('/participation/daily', getParticipationDaily);
+
+router.post('/intelligent-query', intelligentQuery);
 
 export default router;
