@@ -1,6 +1,7 @@
 
 import { Request, Response } from 'express';
 import { poolPromise } from '../db/pool';
+import clientAnalyticsService from '../services/clientAnalyticsService';
 
 // Helper function to build date filters for PostgreSQL
 const addDateFilters = (query: string, params: any[], startDate?: any, endDate?: any) => {
@@ -755,5 +756,43 @@ export const getDashboardOverview = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error in getDashboardOverview:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Get client-based health status (correct clinical interpretation)
+export const getClientHealthStatus = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string,
+      category: req.query.category as string,
+      station: req.query.station as string,
+      gender: req.query.gender as string
+    };
+    
+    const healthStatus = await clientAnalyticsService.getClientHealthStatus(filters);
+    res.json({ success: true, data: healthStatus });
+  } catch (error) {
+    console.error('Error in getClientHealthStatus:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// Get high risk patients with proper clinical context
+export const getHighRiskClients = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      startDate: req.query.startDate as string,
+      endDate: req.query.endDate as string,
+      category: req.query.category as string,
+      station: req.query.station as string,
+      gender: req.query.gender as string
+    };
+    
+    const analytics = await clientAnalyticsService.getClientAnalytics(filters);
+    res.json({ success: true, data: analytics.highRiskPatientsList });
+  } catch (error) {
+    console.error('Error in getHighRiskClients:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };

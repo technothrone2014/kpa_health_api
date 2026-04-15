@@ -16,7 +16,9 @@ import {
   getEmployeeBreastExamResults,
   getEmployeePAPSmearResults,
   getEmployeeViaVilliResults,
-  getDashboardOverview
+  getDashboardOverview,
+  getClientHealthStatus,
+  getHighRiskClients
 } from '../controllers/analyticsController';
 
 import {
@@ -74,5 +76,9 @@ router.get('/multi-visit-abnormal', getMultiVisitAbnormal);
 router.get('/stations', getStations);
 router.get('/categories', getCategories);
 router.get('/data-date-range', getDataDateRange);
+
+// routes/analytics.ts
+router.get('/clients/health-status', getClientHealthStatus);
+router.get('/clients/high-risk', getHighRiskClients);
 
 export default router;
