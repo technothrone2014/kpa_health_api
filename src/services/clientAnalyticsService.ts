@@ -27,6 +27,7 @@ export interface ClientHealthStatus {
   // Condition-specific client counts (based on clinical context)
   bloodPressure: {
     normal: number;
+    mixed?: number;
     preHypertension: number;
     stage1Hypertension: number;
     stage2Hypertension: number;
@@ -37,6 +38,7 @@ export interface ClientHealthStatus {
   bmi: {
     underweight: number;
     normal: number;
+    mixed?: number;
     overweight: number;
     obese: number;
     veryObese: number;
@@ -45,6 +47,7 @@ export interface ClientHealthStatus {
   
   rbs: {
     normal: number;
+    mixed?: number;
     hypoglycemia: number;
     preDiabetic: number;
     diabetic: number;
@@ -70,8 +73,9 @@ export interface HighRiskClient {
   abnormalConditions: string[]; // ['BP', 'BMI', 'RBS']
   conditionsCount: number;
   riskLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  riskScore?: number;
   lastVisitDate: Date;
-  visitHistory: VisitSummary[];
+  visitHistory?: VisitSummary[];
 }
 
 export interface VisitSummary {
@@ -84,7 +88,7 @@ export interface VisitSummary {
 class ClientAnalyticsService {
   
   // Build WHERE clause from filters
-  private buildWhereClause(filters: AnalyticsFilters, params: any[], alias: string = 'c'): string {
+  private buildWhereClause(filters: AnalyticsFilters, params: any[]): string {
     const conditions: string[] = [];
     
     if (filters.startDate) {
@@ -112,51 +116,67 @@ class ClientAnalyticsService {
   }
 
   /**
-   * Determine a client's current status based on visit history
-   * Following clinical rules:
-   * - 1 visit: status is whatever that visit was
-   * - 2 visits: if either is abnormal, treat as abnormal
-   * - 3+ visits: if majority of last 3 visits is normal, treat as normal; otherwise keep abnormal
+   * Determine client status from array of statuses (most recent first)
+   * Clinical rules:
+   * - 1 visit: Normal → NORMAL; Abnormal → ABNORMAL (Intermediate risk)
+   * - 2 visits: 
+   *   - Both Normal → NORMAL (Healthy)
+   *   - One Normal, One Abnormal → MIXED (Intermediate)
+   *   - Both Abnormal → ABNORMAL (High Risk)
+   * - 3+ visits: 
+   *   - Majority (2+) of last 3 are Normal → NORMAL (Healthy)
+   *   - Majority (2+) of last 3 are Abnormal → ABNORMAL (High Risk)
+   *   - Mixed (1 Normal, 1 Abnormal, 1 anything) → MIXED (Intermediate)
    */
-  private determineClientStatus(visits: any[], statusField: string): string {
-    if (!visits || visits.length === 0) return 'UNKNOWN';
+  private determineClientStatusFromArray(statuses: string[]): 'NORMAL' | 'ABNORMAL' | 'MIXED' {
+    if (!statuses || statuses.length === 0) return 'NORMAL';
     
-    // Sort visits by date (most recent first)
-    const sortedVisits = [...visits].sort((a, b) => 
-      new Date(b.visit_date).getTime() - new Date(a.visit_date).getTime()
-    );
+    // Map to NORMAL/ABNORMAL
+    const normalized = statuses.map(s => s === 'NORMAL' ? 'NORMAL' : 'ABNORMAL');
     
-    // Get statuses (NORMAL vs anything else)
-    const statuses = sortedVisits.map(v => v[statusField] === 'NORMAL' ? 'NORMAL' : 'ABNORMAL');
-    
-    // 1 visit: whatever it was
+    // 1 visit
     if (statuses.length === 1) {
-      return sortedVisits[0][statusField];
+      return normalized[0] as 'NORMAL' | 'ABNORMAL';
     }
     
-    // 2 visits: if ANY abnormal, treat as abnormal
+    // 2 visits
     if (statuses.length === 2) {
-      if (statuses.includes('ABNORMAL')) {
-        // Return the most recent abnormal status
-        const abnormalVisit = sortedVisits.find(v => v[statusField] !== 'NORMAL');
-        return abnormalVisit ? abnormalVisit[statusField] : 'NORMAL';
-      }
-      return 'NORMAL';
+      const [first, second] = normalized;
+      if (first === 'NORMAL' && second === 'NORMAL') return 'NORMAL';
+      if (first === 'ABNORMAL' && second === 'ABNORMAL') return 'ABNORMAL';
+      return 'MIXED'; // One normal, one abnormal
     }
     
     // 3+ visits: look at last 3
-    const lastThree = statuses.slice(0, 3);
+    const lastThree = normalized.slice(0, 3);
     const normalCount = lastThree.filter(s => s === 'NORMAL').length;
     const abnormalCount = lastThree.filter(s => s === 'ABNORMAL').length;
     
-    // If majority (2 or more) of last 3 are normal → Normal
-    if (normalCount >= 2) {
-      return 'NORMAL';
-    }
+    // Majority (2 or more) are normal → NORMAL
+    if (normalCount >= 2) return 'NORMAL';
     
-    // Otherwise return the most recent abnormal status
-    const abnormalVisit = sortedVisits.find(v => v[statusField] !== 'NORMAL');
-    return abnormalVisit ? abnormalVisit[statusField] : 'NORMAL';
+    // Majority (2 or more) are abnormal → ABNORMAL
+    if (abnormalCount >= 2) return 'ABNORMAL';
+    
+    // Mixed (e.g., 1 normal, 1 abnormal, 1 anything) → MIXED
+    return 'MIXED';
+  }
+
+  /**
+   * Get the actual status string (not just NORMAL/ABNORMAL/MIXED)
+   * For display purposes, we need the actual category name
+   */
+  private getActualStatus(statuses: string[]): string {
+    if (!statuses || statuses.length === 0) return 'NORMAL';
+    
+    const classification = this.determineClientStatusFromArray(statuses);
+    
+    if (classification === 'NORMAL') return 'NORMAL';
+    if (classification === 'MIXED') return 'MIXED';
+    
+    // For ABNORMAL, return the most recent abnormal status
+    const abnormalStatus = statuses.find(s => s !== 'NORMAL');
+    return abnormalStatus || 'ABNORMAL';
   }
 
   /**
@@ -166,6 +186,8 @@ class ClientAnalyticsService {
     const pool = await poolPromise;
     const params: any[] = [];
     const whereClause = this.buildWhereClause(filters, params);
+    
+    console.log('🔍 Fetching client analytics with filters:', filters);
     
     // Step 1: Get all clients with their complete visit history
     const clientVisitsQuery = `
@@ -184,9 +206,7 @@ class ClientAnalyticsService {
           t."PostedOn" as visit_date,
           bp."Title" as bp_status,
           bmi."Title" as bmi_status,
-          rbs."Title" as rbs_status,
-          -- Order within client
-          ROW_NUMBER() OVER (PARTITION BY c."Id" ORDER BY t."PostedOn" DESC) as visit_rank
+          rbs."Title" as rbs_status
         FROM "Clients" c
         JOIN "Tallies" t ON c."Id" = t."ClientId"
         JOIN "Categories" cat ON c."CategoryId" = cat."Id"
@@ -213,14 +233,10 @@ class ClientAnalyticsService {
           gender,
           COUNT(DISTINCT tally_id) as total_visits,
           MAX(visit_date) as last_visit_date,
-          -- Get arrays of statuses for each client
+          -- Get arrays of statuses for each client (most recent first)
           ARRAY_AGG(bp_status ORDER BY visit_date DESC) as bp_statuses,
           ARRAY_AGG(bmi_status ORDER BY visit_date DESC) as bmi_statuses,
-          ARRAY_AGG(rbs_status ORDER BY visit_date DESC) as rbs_statuses,
-          -- Get the most recent status
-          (ARRAY_AGG(bp_status ORDER BY visit_date DESC))[1] as latest_bp,
-          (ARRAY_AGG(bmi_status ORDER BY visit_date DESC))[1] as latest_bmi,
-          (ARRAY_AGG(rbs_status ORDER BY visit_date DESC))[1] as latest_rbs
+          ARRAY_AGG(rbs_status ORDER BY visit_date DESC) as rbs_statuses
         FROM client_visits
         GROUP BY client_id, "FullName", "FirstName", "LastName", "IDNumber", "PhoneNumber", category, station, gender
       )
@@ -231,60 +247,91 @@ class ClientAnalyticsService {
     const result = await pool.query(clientVisitsQuery, params);
     const clients = result.rows;
     
+    console.log(`📊 Found ${clients.length} clients with visits`);
+    
     // Step 2: Process each client to determine their final status based on visit history
     const processedClients = clients.map((client: any) => {
-      // Reconstruct visits for status determination
-      const bpVisits = client.bp_statuses.map((status: string, idx: number) => ({
-        visit_date: new Date(),
-        bp_status: status
-      }));
+      const bpClassification = this.determineClientStatusFromArray(client.bp_statuses || []);
+      const bmiClassification = this.determineClientStatusFromArray(client.bmi_statuses || []);
+      const rbsClassification = this.determineClientStatusFromArray(client.rbs_statuses || []);
       
-      const bmiVisits = client.bmi_statuses.map((status: string, idx: number) => ({
-        visit_date: new Date(),
-        bmi_status: status
-      }));
+      // Get actual status strings for display
+      const finalBpStatus = this.getActualStatus(client.bp_statuses || []);
+      const finalBmiStatus = this.getActualStatus(client.bmi_statuses || []);
+      const finalRbsStatus = this.getActualStatus(client.rbs_statuses || []);
       
-      const rbsVisits = client.rbs_statuses.map((status: string, idx: number) => ({
-        visit_date: new Date(),
-        rbs_status: status
-      }));
+      // Determine overall health classification
+      // A client is HEALTHY only if ALL THREE are NORMAL
+      const isHealthy = bpClassification === 'NORMAL' && 
+                        bmiClassification === 'NORMAL' && 
+                        rbsClassification === 'NORMAL';
       
-      // Determine final status using clinical rules
-      const finalBpStatus = this.determineClientStatusFromArray(client.bp_statuses);
-      const finalBmiStatus = this.determineClientStatusFromArray(client.bmi_statuses);
-      const finalRbsStatus = this.determineClientStatusFromArray(client.rbs_statuses);
-      
-      // Determine if client is healthy (all normal), high risk, or intermediate
-      const isHealthy = finalBpStatus === 'NORMAL' && 
-                        finalBmiStatus === 'NORMAL' && 
-                        finalRbsStatus === 'NORMAL';
-      
+      // Count abnormal conditions (ABNORMAL or MIXED count as a condition)
       const abnormalConditions = [];
-      if (finalBpStatus !== 'NORMAL') abnormalConditions.push('BP');
-      if (finalBmiStatus !== 'NORMAL') abnormalConditions.push('BMI');
-      if (finalRbsStatus !== 'NORMAL') abnormalConditions.push('RBS');
+      if (bpClassification !== 'NORMAL') abnormalConditions.push('BP');
+      if (bmiClassification !== 'NORMAL') abnormalConditions.push('BMI');
+      if (rbsClassification !== 'NORMAL') abnormalConditions.push('RBS');
       
       const conditionsCount = abnormalConditions.length;
       
-      // Risk level based on conditions count and visits
+      // Count how many are ABNORMAL vs MIXED
+      const abnormalCount = [bpClassification, bmiClassification, rbsClassification]
+        .filter(c => c === 'ABNORMAL').length;
+      const mixedCount = [bpClassification, bmiClassification, rbsClassification]
+        .filter(c => c === 'MIXED').length;
+      
+      // Determine risk level based on classifications
       let riskLevel: 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW';
-      if (conditionsCount >= 2 || (conditionsCount === 1 && client.total_visits >= 2)) {
+      
+      if (abnormalCount >= 2) {
         riskLevel = 'HIGH';
-      } else if (conditionsCount === 1) {
+      } else if (abnormalCount === 1 || mixedCount >= 1) {
         riskLevel = 'MEDIUM';
+      } else {
+        riskLevel = 'LOW'; // All NORMAL
       }
+      
+      // Calculate risk score (0-100)
+      const riskScore = Math.min(100, Math.round(
+        (abnormalCount * 35) + (mixedCount * 15) + (client.total_visits >= 2 ? 10 : 0)
+      ));
       
       return {
         ...client,
+        bpClassification,
+        bmiClassification,
+        rbsClassification,
         finalBpStatus,
         finalBmiStatus,
         finalRbsStatus,
         isHealthy,
         abnormalConditions,
         conditionsCount,
-        riskLevel
+        abnormalCount,
+        mixedCount,
+        riskLevel,
+        riskScore
       };
     });
+    
+    // Log some samples for debugging
+    const sampleHealthy = processedClients.filter(c => c.isHealthy).slice(0, 3);
+    console.log('✅ Sample healthy clients:', sampleHealthy.map(c => ({
+      name: c.FullName,
+      visits: c.total_visits,
+      bp: c.finalBpStatus,
+      bmi: c.finalBmiStatus,
+      rbs: c.finalRbsStatus
+    })));
+    
+    const sampleMixed = processedClients.filter(c => c.mixedCount > 0).slice(0, 3);
+    console.log('🟡 Sample intermediate/mixed clients:', sampleMixed.map(c => ({
+      name: c.FullName,
+      visits: c.total_visits,
+      bp: `${c.finalBpStatus} (${c.bpClassification})`,
+      bmi: `${c.finalBmiStatus} (${c.bmiClassification})`,
+      rbs: `${c.finalRbsStatus} (${c.rbsClassification})`
+    })));
     
     // Step 3: Calculate aggregates
     const totalClientsSeen = processedClients.length;
@@ -293,12 +340,23 @@ class ClientAnalyticsService {
     const highRiskClients = processedClients.filter(c => c.riskLevel === 'HIGH').length;
     const intermediateClients = totalClientsSeen - healthyClients - highRiskClients;
     
+    console.log(`📈 Stats: Total=${totalClientsSeen}, Healthy=${healthyClients}, Intermediate=${intermediateClients}, HighRisk=${highRiskClients}`);
+    
     // Blood Pressure distribution
     const bpCounts = {
       normal: processedClients.filter(c => c.finalBpStatus === 'NORMAL').length,
-      preHypertension: processedClients.filter(c => c.finalBpStatus === 'PRE-HYPERTENSION').length,
-      stage1Hypertension: processedClients.filter(c => c.finalBpStatus === 'STAGE I HYPERTENSION').length,
-      stage2Hypertension: processedClients.filter(c => c.finalBpStatus === 'STAGE II HYPERTENSION').length,
+      mixed: processedClients.filter(c => c.finalBpStatus === 'MIXED').length,
+      preHypertension: processedClients.filter(c => 
+        c.finalBpStatus === 'PRE-HYPERTENSION'
+      ).length,
+      stage1Hypertension: processedClients.filter(c => 
+        c.finalBpStatus === 'STAGE I HYPERTENSION' || c.finalBpStatus === 'STAGE 1 HYPERTENSION'
+      ).length,
+      stage2Hypertension: processedClients.filter(c => 
+        c.finalBpStatus === 'STAGE II HYPERTENSION' || 
+        c.finalBpStatus === 'STAGE 2 HYPERTENSION' ||
+        c.finalBpStatus === 'HYPERTENSION'
+      ).length,
       hypotension: processedClients.filter(c => c.finalBpStatus === 'HYPOTENSION').length,
     };
     
@@ -306,20 +364,24 @@ class ClientAnalyticsService {
     const bmiCounts = {
       underweight: processedClients.filter(c => c.finalBmiStatus === 'UNDERWEIGHT').length,
       normal: processedClients.filter(c => c.finalBmiStatus === 'NORMAL').length,
+      mixed: processedClients.filter(c => c.finalBmiStatus === 'MIXED').length,
       overweight: processedClients.filter(c => c.finalBmiStatus === 'OVERWEIGHT').length,
       obese: processedClients.filter(c => c.finalBmiStatus === 'OBESE').length,
-      veryObese: processedClients.filter(c => c.finalBmiStatus === 'VERY OBESE').length,
+      veryObese: processedClients.filter(c => 
+        c.finalBmiStatus === 'VERY OBESE' || c.finalBmiStatus === 'VERY OBESE'
+      ).length,
     };
     
     // RBS distribution
     const rbsCounts = {
       normal: processedClients.filter(c => c.finalRbsStatus === 'NORMAL').length,
+      mixed: processedClients.filter(c => c.finalRbsStatus === 'MIXED').length,
       hypoglycemia: processedClients.filter(c => c.finalRbsStatus === 'HYPOGLYCEMIA').length,
       preDiabetic: processedClients.filter(c => c.finalRbsStatus === 'PRE-DIABETIC').length,
       diabetic: processedClients.filter(c => c.finalRbsStatus === 'DIABETIC').length,
     };
     
-    // Step 4: Build high risk patients list with visit history
+    // Step 4: Build high risk patients list
     const highRiskPatientsList: HighRiskClient[] = processedClients
       .filter(c => c.riskLevel === 'HIGH')
       .map(c => ({
@@ -337,9 +399,11 @@ class ClientAnalyticsService {
         abnormalConditions: c.abnormalConditions,
         conditionsCount: c.conditionsCount,
         riskLevel: c.riskLevel,
+        riskScore: c.riskScore,
         lastVisitDate: c.last_visit_date,
-        visitHistory: [] // Can be populated if needed
-      }));
+        visitHistory: []
+      }))
+      .sort((a, b) => b.conditionsCount - a.conditionsCount || b.totalVisits - a.totalVisits);
     
     // Step 5: Get total visits count
     const totalVisitsResult = await pool.query(`
@@ -385,38 +449,6 @@ class ClientAnalyticsService {
       
       highRiskPatientsList
     };
-  }
-
-  /**
-   * Determine client status from array of statuses (most recent first)
-   */
-  private determineClientStatusFromArray(statuses: string[]): string {
-    if (!statuses || statuses.length === 0) return 'UNKNOWN';
-    
-    const normalStatuses = statuses.map(s => s === 'NORMAL' ? 'NORMAL' : 'ABNORMAL');
-    
-    // 1 visit
-    if (statuses.length === 1) {
-      return statuses[0];
-    }
-    
-    // 2 visits: if any abnormal → abnormal
-    if (statuses.length === 2) {
-      if (normalStatuses.includes('ABNORMAL')) {
-        return statuses.find(s => s !== 'NORMAL') || 'NORMAL';
-      }
-      return 'NORMAL';
-    }
-    
-    // 3+ visits: check last 3
-    const lastThree = normalStatuses.slice(0, 3);
-    const normalCount = lastThree.filter(s => s === 'NORMAL').length;
-    
-    if (normalCount >= 2) {
-      return 'NORMAL';
-    }
-    
-    return statuses.find(s => s !== 'NORMAL') || 'NORMAL';
   }
 
   /**
