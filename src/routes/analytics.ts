@@ -38,6 +38,8 @@ import {
   getRBSDistribution
 } from '../controllers/advancedAnalyticsController';
 
+import { getGenderDistribution } from '../controllers/analyticsController';
+
 const router = express.Router();
 
 // Client summary endpoints
@@ -84,5 +86,6 @@ router.get('/clients/health-status', getClientHealthStatus);
 router.get('/clients/high-risk', getHighRiskClients);
 router.get('/clients/station-distribution', getStationDistribution);
 router.get('/clients/category-distribution', getCategoryDistribution);
+router.get('/clients/gender-distribution', getGenderDistribution);
 
 export default router;

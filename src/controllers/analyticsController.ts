@@ -902,3 +902,55 @@ export const getCategoryDistribution = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
+
+// Get gender distribution for dashboard
+export const getGenderDistribution = async (req: Request, res: Response) => {
+  try {
+    const pool = await poolPromise;
+    const { startDate, endDate, category, station } = req.query;
+    
+    let query = `
+      SELECT 
+        COALESCE(g."Title", 'Unknown') as gender,
+        COUNT(DISTINCT c."Id") as count
+      FROM "Clients" c
+      INNER JOIN "Tallies" t ON c."Id" = t."ClientId"
+      INNER JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+      LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
+      WHERE t."Deleted" = false 
+        AND t."Status" = true
+        AND c."Deleted" = false
+        AND c."Status" = true
+        AND g."Title" IS NOT NULL
+    `;
+    
+    const params: any[] = [];
+    let paramIndex = 1;
+    
+    if (startDate && startDate !== '') {
+      query += ` AND t."PostedOn" >= $${paramIndex++}`;
+      params.push(startDate);
+    }
+    if (endDate && endDate !== '') {
+      query += ` AND t."PostedOn" <= $${paramIndex++}`;
+      params.push(endDate);
+    }
+    if (category && category !== 'all') {
+      query += ` AND cat."Title" = $${paramIndex++}`;
+      params.push(category);
+    }
+    if (station && station !== 'all') {
+      query += ` AND s."Title" = $${paramIndex++}`;
+      params.push(station);
+    }
+    
+    query += ` GROUP BY g."Title" ORDER BY count DESC`;
+    
+    const result = await pool.query(query, params);
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('Error in getGenderDistribution:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
