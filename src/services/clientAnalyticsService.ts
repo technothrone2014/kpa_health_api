@@ -107,8 +107,9 @@ class ClientAnalyticsService {
       conditions.push(`s."Title" = $${params.length + 1}`);
       params.push(filters.station);
     }
+    // FIXED: Use ILIKE for case-insensitive gender matching
     if (filters.gender && filters.gender !== 'all') {
-      conditions.push(`g."Title" = $${params.length + 1}`);
+      conditions.push(`g."Title" ILIKE $${params.length + 1}`);
       params.push(filters.gender);
     }
     

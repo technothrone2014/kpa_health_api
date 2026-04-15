@@ -834,7 +834,7 @@ export const getStationDistribution = async (req: Request, res: Response) => {
       params.push(category);
     }
     if (gender && gender !== 'all') {
-      query += ` AND g."Title" = $${paramIndex++}`;
+      query += ` AND g."Title" ILIKE $${paramIndex++}`;
       params.push(gender);
     }
     
@@ -887,7 +887,7 @@ export const getCategoryDistribution = async (req: Request, res: Response) => {
       params.push(station);
     }
     if (gender && gender !== 'all') {
-      query += ` AND g."Title" = $${paramIndex++}`;
+      query += ` AND g."Title" ILIKE $${paramIndex++}`;
       params.push(gender);
     }
     
