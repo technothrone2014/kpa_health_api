@@ -1,3 +1,4 @@
+// services/auditService.ts
 import { poolPromise } from '../db/pool';
 
 export interface AuditLogEntry {
@@ -13,6 +14,13 @@ export interface AuditLogEntry {
   Timestamp: Date;
 }
 
+// Helper to truncate strings to fit database column limits
+const truncate = (value: string | null, maxLength: number = 100): string | null => {
+  if (!value) return null;
+  if (value.length <= maxLength) return value;
+  return value.substring(0, maxLength - 3) + '...';
+};
+
 export const auditLog = async (
   userId: number | null,
   action: string,
@@ -25,19 +33,34 @@ export const auditLog = async (
 ): Promise<void> => {
   try {
     const pool = await poolPromise;
+    
+    // Truncate values to fit database constraints
+    const truncatedAction = truncate(action, 50);
+    const truncatedEntity = truncate(entity, 100);
+    
+    // For JWT tokens in entityId, we can either truncate or hash them
+    let truncatedEntityId = entityId;
+    if (entityId && entityId.length > 100) {
+      // If it's a JWT token, just store a shortened version or hash
+      // This keeps the reference without breaking the DB constraint
+      truncatedEntityId = entityId.substring(0, 97) + '...';
+    }
+    
+    const truncatedIpAddress = truncate(ipAddress, 45);
+    
     await pool.query(
       `INSERT INTO "AuditLogs" 
        ("UserId", "Action", "Entity", "EntityId", "OldValues", "NewValues", "IpAddress", "UserAgent", "Timestamp")
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
       [
         userId, 
-        action, 
-        entity, 
-        entityId, 
+        truncatedAction, 
+        truncatedEntity, 
+        truncatedEntityId, 
         oldValues ? JSON.stringify(oldValues) : null, 
         newValues ? JSON.stringify(newValues) : null, 
-        ipAddress, 
-        userAgent
+        truncatedIpAddress, 
+        userAgent ? truncate(userAgent, 500) : null
       ]
     );
   } catch (error) {
