@@ -20,7 +20,9 @@ import {
   getClientHealthStatus,
   getHighRiskClients,
   getCategoryDistribution,
-  getStationDistribution
+  getStationDistribution,
+  getParticipationByPeriods,
+  getParticipationDaily
 } from '../controllers/analyticsController';
 
 import {
@@ -87,5 +89,9 @@ router.get('/clients/high-risk', getHighRiskClients);
 router.get('/clients/station-distribution', getStationDistribution);
 router.get('/clients/category-distribution', getCategoryDistribution);
 router.get('/clients/gender-distribution', getGenderDistribution);
+
+// Participation Trends Routes
+router.get('/participation/periods', getParticipationByPeriods);
+router.get('/participation/daily', getParticipationDaily);
 
 export default router;

@@ -954,3 +954,161 @@ export const getGenderDistribution = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
+
+// Get participation trends by EAP periods (with spillover handling)
+export const getParticipationByPeriods = async (req: Request, res: Response) => {
+  try {
+    const pool = await poolPromise;
+    const { startDate, endDate, category, station, gender } = req.query;
+    
+    const params: any[] = [];
+    let whereClause = '';
+    let paramIndex = 1;
+    
+    if (startDate && startDate !== '') {
+      whereClause += ` AND t."PostedOn" >= $${paramIndex++}`;
+      params.push(startDate);
+    }
+    if (endDate && endDate !== '') {
+      whereClause += ` AND t."PostedOn" <= $${paramIndex++}`;
+      params.push(endDate);
+    }
+    if (category && category !== 'all') {
+      whereClause += ` AND cat."Title" = $${paramIndex++}`;
+      params.push(category);
+    }
+    if (station && station !== 'all') {
+      whereClause += ` AND s."Title" = $${paramIndex++}`;
+      params.push(station);
+    }
+    if (gender && gender !== 'all') {
+      whereClause += ` AND g."Title" ILIKE $${paramIndex++}`;
+      params.push(gender);
+    }
+    
+    const query = `
+      WITH daily_tallies AS (
+        SELECT 
+          DATE(t."PostedOn") as screening_date,
+          COUNT(*) as tally_count,
+          COUNT(DISTINCT c."Id") as unique_clients
+        FROM "Tallies" t
+        JOIN "Clients" c ON t."ClientId" = c."Id"
+        JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+        LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+        LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
+        WHERE t."Deleted" = false 
+          AND t."Status" = true
+          AND c."Deleted" = false
+          AND c."Status" = true
+          ${whereClause}
+        GROUP BY DATE(t."PostedOn")
+        ORDER BY screening_date
+      ),
+      with_gaps AS (
+        SELECT 
+          screening_date,
+          tally_count,
+          unique_clients,
+          LAG(screening_date) OVER (ORDER BY screening_date) as prev_date,
+          CASE 
+            WHEN LAG(screening_date) OVER (ORDER BY screening_date) IS NULL THEN 1
+            WHEN screening_date - LAG(screening_date) OVER (ORDER BY screening_date) > 20 THEN 1
+            ELSE 0
+          END as new_period_flag
+        FROM daily_tallies
+      ),
+      period_groups AS (
+        SELECT 
+          screening_date,
+          tally_count,
+          unique_clients,
+          SUM(new_period_flag) OVER (ORDER BY screening_date) as period_id
+        FROM with_gaps
+      )
+      SELECT 
+        period_id,
+        MIN(screening_date) as period_start,
+        MAX(screening_date) as period_end,
+        TO_CHAR(MIN(screening_date), 'Mon YYYY') || 
+          CASE WHEN EXTRACT(MONTH FROM MIN(screening_date)) != EXTRACT(MONTH FROM MAX(screening_date))
+               THEN ' - ' || TO_CHAR(MAX(screening_date), 'Mon YYYY')
+               ELSE ''
+          END as period_label,
+        SUM(tally_count) as total_tallies,
+        SUM(unique_clients) as total_unique_clients,
+        COUNT(*) as screening_days,
+        ROUND(AVG(tally_count), 1) as avg_daily_tallies,
+        EXTRACT(YEAR FROM MIN(screening_date)) as year
+      FROM period_groups
+      GROUP BY period_id
+      HAVING COUNT(*) >= 2
+      ORDER BY period_start
+    `;
+    
+    const result = await pool.query(query, params);
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('Error in getParticipationByPeriods:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// Get daily participation trends
+export const getParticipationDaily = async (req: Request, res: Response) => {
+  try {
+    const pool = await poolPromise;
+    const { startDate, endDate, category, station, gender } = req.query;
+    
+    const params: any[] = [];
+    let whereClause = '';
+    let paramIndex = 1;
+    
+    if (startDate && startDate !== '') {
+      whereClause += ` AND t."PostedOn" >= $${paramIndex++}`;
+      params.push(startDate);
+    }
+    if (endDate && endDate !== '') {
+      whereClause += ` AND t."PostedOn" <= $${paramIndex++}`;
+      params.push(endDate);
+    }
+    if (category && category !== 'all') {
+      whereClause += ` AND cat."Title" = $${paramIndex++}`;
+      params.push(category);
+    }
+    if (station && station !== 'all') {
+      whereClause += ` AND s."Title" = $${paramIndex++}`;
+      params.push(station);
+    }
+    if (gender && gender !== 'all') {
+      whereClause += ` AND g."Title" ILIKE $${paramIndex++}`;
+      params.push(gender);
+    }
+    
+    const query = `
+      SELECT 
+        DATE(t."PostedOn") as screening_date,
+        TO_CHAR(DATE(t."PostedOn"), 'MM/DD/YY') as date_label,
+        COUNT(*) as tally_count,
+        COUNT(DISTINCT c."Id") as unique_clients
+      FROM "Tallies" t
+      JOIN "Clients" c ON t."ClientId" = c."Id"
+      JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+      LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
+      WHERE t."Deleted" = false 
+        AND t."Status" = true
+        AND c."Deleted" = false
+        AND c."Status" = true
+        ${whereClause}
+      GROUP BY DATE(t."PostedOn")
+      ORDER BY screening_date
+    `;
+    
+    const result = await pool.query(query, params);
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('Error in getParticipationDaily:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
