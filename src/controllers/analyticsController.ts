@@ -796,3 +796,55 @@ export const getHighRiskClients = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
+
+// Get station distribution
+export const getStationDistribution = async (req: Request, res: Response) => {
+  try {
+    const filters = { startDate: req.query.startDate as string, endDate: req.query.endDate as string, category: req.query.category as string, gender: req.query.gender as string };
+    const pool = await poolPromise;
+    const params: any[] = [];
+    let whereClause = '';
+    if (filters.startDate) { whereClause += ` AND t."PostedOn" >= $${params.length + 1}`; params.push(filters.startDate); }
+    if (filters.endDate) { whereClause += ` AND t."PostedOn" <= $${params.length + 1}`; params.push(filters.endDate); }
+    if (filters.category !== 'all') { whereClause += ` AND cat."Title" = $${params.length + 1}`; params.push(filters.category); }
+    if (filters.gender !== 'all') { whereClause += ` AND g."Title" = $${params.length + 1}`; params.push(filters.gender); }
+    
+    const result = await pool.query(`
+      SELECT COALESCE(s."Title", 'Unknown') as station, COUNT(DISTINCT c."Id") as count
+      FROM "Clients" c
+      JOIN "Tallies" t ON c."Id" = t."ClientId"
+      JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+      LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
+      WHERE t."Deleted" = false AND t."Status" = true AND c."Deleted" = false AND c."Status" = true ${whereClause}
+      GROUP BY s."Title" ORDER BY count DESC
+    `, params);
+    res.json({ success: true, data: result.rows });
+  } catch (error) { res.status(500).json({ success: false, error: 'Internal server error' }); }
+};
+
+// Get category distribution
+export const getCategoryDistribution = async (req: Request, res: Response) => {
+  try {
+    const filters = { startDate: req.query.startDate as string, endDate: req.query.endDate as string, station: req.query.station as string, gender: req.query.gender as string };
+    const pool = await poolPromise;
+    const params: any[] = [];
+    let whereClause = '';
+    if (filters.startDate) { whereClause += ` AND t."PostedOn" >= $${params.length + 1}`; params.push(filters.startDate); }
+    if (filters.endDate) { whereClause += ` AND t."PostedOn" <= $${params.length + 1}`; params.push(filters.endDate); }
+    if (filters.station !== 'all') { whereClause += ` AND s."Title" = $${params.length + 1}`; params.push(filters.station); }
+    if (filters.gender !== 'all') { whereClause += ` AND g."Title" = $${params.length + 1}`; params.push(filters.gender); }
+    
+    const result = await pool.query(`
+      SELECT cat."Title" as category, COUNT(DISTINCT c."Id") as count
+      FROM "Clients" c
+      JOIN "Tallies" t ON c."Id" = t."ClientId"
+      JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+      LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
+      WHERE t."Deleted" = false AND t."Status" = true AND c."Deleted" = false AND c."Status" = true ${whereClause}
+      GROUP BY cat."Title" ORDER BY count DESC
+    `, params);
+    res.json({ success: true, data: result.rows });
+  } catch (error) { res.status(500).json({ success: false, error: 'Internal server error' }); }
+};

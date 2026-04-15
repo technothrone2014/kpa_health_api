@@ -18,7 +18,9 @@ import {
   getEmployeeViaVilliResults,
   getDashboardOverview,
   getClientHealthStatus,
-  getHighRiskClients
+  getHighRiskClients,
+  getCategoryDistribution,
+  getStationDistribution
 } from '../controllers/analyticsController';
 
 import {
@@ -80,5 +82,7 @@ router.get('/data-date-range', getDataDateRange);
 // routes/analytics.ts
 router.get('/clients/health-status', getClientHealthStatus);
 router.get('/clients/high-risk', getHighRiskClients);
+router.get('/clients/station-distribution', getStationDistribution);
+router.get('/clients/category-distribution', getCategoryDistribution);
 
 export default router;
