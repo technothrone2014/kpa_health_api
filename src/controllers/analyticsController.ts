@@ -797,54 +797,108 @@ export const getHighRiskClients = async (req: Request, res: Response) => {
   }
 };
 
-// Get station distribution
+// Get station distribution for dashboard
 export const getStationDistribution = async (req: Request, res: Response) => {
   try {
-    const filters = { startDate: req.query.startDate as string, endDate: req.query.endDate as string, category: req.query.category as string, gender: req.query.gender as string };
     const pool = await poolPromise;
-    const params: any[] = [];
-    let whereClause = '';
-    if (filters.startDate) { whereClause += ` AND t."PostedOn" >= $${params.length + 1}`; params.push(filters.startDate); }
-    if (filters.endDate) { whereClause += ` AND t."PostedOn" <= $${params.length + 1}`; params.push(filters.endDate); }
-    if (filters.category !== 'all') { whereClause += ` AND cat."Title" = $${params.length + 1}`; params.push(filters.category); }
-    if (filters.gender !== 'all') { whereClause += ` AND g."Title" = $${params.length + 1}`; params.push(filters.gender); }
+    const { startDate, endDate, category, gender } = req.query;
     
-    const result = await pool.query(`
-      SELECT COALESCE(s."Title", 'Unknown') as station, COUNT(DISTINCT c."Id") as count
+    let query = `
+      SELECT 
+        COALESCE(s."Title", 'Unknown') as station,
+        COUNT(DISTINCT c."Id") as count
       FROM "Clients" c
-      JOIN "Tallies" t ON c."Id" = t."ClientId"
-      JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      INNER JOIN "Tallies" t ON c."Id" = t."ClientId"
+      INNER JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       LEFT JOIN "Stations" s ON c."StationId" = s."Id"
       LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
-      WHERE t."Deleted" = false AND t."Status" = true AND c."Deleted" = false AND c."Status" = true ${whereClause}
-      GROUP BY s."Title" ORDER BY count DESC
-    `, params);
+      WHERE t."Deleted" = false 
+        AND t."Status" = true
+        AND c."Deleted" = false
+        AND c."Status" = true
+    `;
+    
+    const params: any[] = [];
+    let paramIndex = 1;
+    
+    if (startDate && startDate !== '') {
+      query += ` AND t."PostedOn" >= $${paramIndex++}`;
+      params.push(startDate);
+    }
+    if (endDate && endDate !== '') {
+      query += ` AND t."PostedOn" <= $${paramIndex++}`;
+      params.push(endDate);
+    }
+    if (category && category !== 'all') {
+      query += ` AND cat."Title" = $${paramIndex++}`;
+      params.push(category);
+    }
+    if (gender && gender !== 'all') {
+      query += ` AND g."Title" = $${paramIndex++}`;
+      params.push(gender);
+    }
+    
+    query += ` GROUP BY s."Title" ORDER BY count DESC`;
+    
+    console.log('Station Query:', query, 'Params:', params);
+    const result = await pool.query(query, params);
+    console.log('Station Result rows:', result.rows.length);
     res.json({ success: true, data: result.rows });
-  } catch (error) { res.status(500).json({ success: false, error: 'Internal server error' }); }
+  } catch (error) {
+    console.error('Error in getStationDistribution:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
 };
 
-// Get category distribution
+// Get category distribution for dashboard
 export const getCategoryDistribution = async (req: Request, res: Response) => {
   try {
-    const filters = { startDate: req.query.startDate as string, endDate: req.query.endDate as string, station: req.query.station as string, gender: req.query.gender as string };
     const pool = await poolPromise;
-    const params: any[] = [];
-    let whereClause = '';
-    if (filters.startDate) { whereClause += ` AND t."PostedOn" >= $${params.length + 1}`; params.push(filters.startDate); }
-    if (filters.endDate) { whereClause += ` AND t."PostedOn" <= $${params.length + 1}`; params.push(filters.endDate); }
-    if (filters.station !== 'all') { whereClause += ` AND s."Title" = $${params.length + 1}`; params.push(filters.station); }
-    if (filters.gender !== 'all') { whereClause += ` AND g."Title" = $${params.length + 1}`; params.push(filters.gender); }
+    const { startDate, endDate, station, gender } = req.query;
     
-    const result = await pool.query(`
-      SELECT cat."Title" as category, COUNT(DISTINCT c."Id") as count
+    let query = `
+      SELECT 
+        cat."Title" as category,
+        COUNT(DISTINCT c."Id") as count
       FROM "Clients" c
-      JOIN "Tallies" t ON c."Id" = t."ClientId"
-      JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      INNER JOIN "Tallies" t ON c."Id" = t."ClientId"
+      INNER JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       LEFT JOIN "Stations" s ON c."StationId" = s."Id"
       LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
-      WHERE t."Deleted" = false AND t."Status" = true AND c."Deleted" = false AND c."Status" = true ${whereClause}
-      GROUP BY cat."Title" ORDER BY count DESC
-    `, params);
+      WHERE t."Deleted" = false 
+        AND t."Status" = true
+        AND c."Deleted" = false
+        AND c."Status" = true
+    `;
+    
+    const params: any[] = [];
+    let paramIndex = 1;
+    
+    if (startDate && startDate !== '') {
+      query += ` AND t."PostedOn" >= $${paramIndex++}`;
+      params.push(startDate);
+    }
+    if (endDate && endDate !== '') {
+      query += ` AND t."PostedOn" <= $${paramIndex++}`;
+      params.push(endDate);
+    }
+    if (station && station !== 'all') {
+      query += ` AND s."Title" = $${paramIndex++}`;
+      params.push(station);
+    }
+    if (gender && gender !== 'all') {
+      query += ` AND g."Title" = $${paramIndex++}`;
+      params.push(gender);
+    }
+    
+    query += ` GROUP BY cat."Title" ORDER BY count DESC`;
+    
+    console.log('Category Query:', query, 'Params:', params);
+    const result = await pool.query(query, params);
+    console.log('Category Result rows:', result.rows.length);
     res.json({ success: true, data: result.rows });
-  } catch (error) { res.status(500).json({ success: false, error: 'Internal server error' }); }
+  } catch (error) {
+    console.error('Error in getCategoryDistribution:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
 };
