@@ -204,9 +204,9 @@ class ClientAnalyticsService {
           COALESCE(g."Title", 'Unknown') as gender,
           t."Id" as tally_id,
           t."PostedOn" as visit_date,
-          bp."Title" as bp_status,
-          bmi."Title" as bmi_status,
-          rbs."Title" as rbs_status
+          TRIM(bp."Title") as bp_status,      -- ← TRIM HERE
+          TRIM(bmi."Title") as bmi_status,    -- ← TRIM HERE
+          TRIM(rbs."Title") as rbs_status     -- ← TRIM HERE
         FROM "Clients" c
         JOIN "Tallies" t ON c."Id" = t."ClientId"
         JOIN "Categories" cat ON c."CategoryId" = cat."Id"
@@ -218,6 +218,7 @@ class ClientAnalyticsService {
         WHERE t."Deleted" = false 
           AND t."Status" = true
           AND c."Deleted" = false
+          AND c."Status" = true
           ${whereClause}
       ),
       client_summary AS (
