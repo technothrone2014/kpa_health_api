@@ -7,7 +7,7 @@ import {
   logout, 
   getCurrentUser  // Make sure this is imported
 } from '../controllers/authController';
-import { authMiddleware } from '../middleware/authMiddleware';
+import { authMiddleware, requireRole } from '../middleware/authMiddleware';
 
 const router = express.Router();
 
