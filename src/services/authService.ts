@@ -17,6 +17,7 @@ export interface User {
   Email: string;
   PhoneNumber?: string;
   UserName?: string;
+  StationId?: string;
   Status: boolean;
   TwoFactorEnabled: boolean;
 }
@@ -408,6 +409,7 @@ class AuthService {
           LastName: user.LastName,
           PhoneNumber: user.PhoneNumber,
           UserName: user.UserName,
+          StationId: user.StationId,
         },
         roles
       };
@@ -446,7 +448,7 @@ class AuthService {
       try {
         const result = await client.query(
           `SELECT "Id", "FirstName", "LastName", "Email", "UserName", "PhoneNumber", "Status", "StationId"
-           FROM "Users" WHERE "Id" = $1`,
+          FROM "Users" WHERE "Id" = $1`,
           [userId]
         );
         
@@ -455,7 +457,17 @@ class AuthService {
         }
         
         const user = result.rows[0];
-        const roles = await this.getUserRoles(userId);
+        
+        // ✅ GET USER ROLES
+        const rolesResult = await client.query(
+          `SELECT r."Name" FROM "UserRoles" ur
+          JOIN "Roles" r ON ur."RoleId" = r."Id"
+          WHERE ur."UserId" = $1`,
+          [userId]
+        );
+        
+        const roles = rolesResult.rows.map(row => row.Name);
+        console.log(`🔍 getCurrentUser: User ${userId} has roles:`, roles);
         
         return { ...user, roles };
       } finally {
