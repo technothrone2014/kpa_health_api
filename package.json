@@ -8,7 +8,11 @@
     "dev": "ts-node src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "migrate:db": "node scripts/migrate-all.js",
+    "migrate:auth": "node scripts/migrate-auth-tables.js",
+    "migrate:roles": "node scripts/migrate-roles.js",
+    "migrate:data": "node scripts/migrate-to-postgres.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -19,11 +23,11 @@
     "express": "^4.22.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.3",
-    "mssql": "^12.2.1",
+    "mssql": "^12.7.0",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.5",
     "otp-generator": "^4.0.1",
-    "pg": "^8.20.0",
+    "pg": "^8.22.0",
     "winston": "^3.19.0"
   },
   "devDependencies": {

@@ -1,29 +1,31 @@
-// kpa_health_api/scripts/migrate-to-postgres.js
+// scripts/migrate-to-postgres.js
 const sql = require('mssql');
 const { Client } = require('pg');
 require('dotenv').config();
 
-// SQL Server connection (your local KPA-like DB)
+// ============================================
+// SQL SERVER CONFIGURATION
+// ============================================
 const sqlConfig = {
-  user: 'api_user2',  // Change this to your SQL Server username
-  password: 'Godlovesyou2!',  // Change this to your SQL Server password
-  server: 'localhost',
-  port: 1433,
-  database: 'ZoodeskDB',
+  user: process.env.KPA_DB_USER || 'api_user',
+  password: process.env.KPA_DB_PASSWORD || 'Godlovesyou2!',
+  server: process.env.KPA_DB_HOST || 'DESKTOP-5PSVOHG',
+  port: parseInt(process.env.KPA_SERVER_PORT || '1433'),
+  database: process.env.KPA_DB_NAME || 'ZoodeskDB',
   options: {
     encrypt: false,
     trustServerCertificate: true,
-    enableArithAbort: true
+    enableArithAbort: true,
+    connectTimeout: 30000,
+    requestTimeout: 30000,
   }
 };
 
-// PostgreSQL connection - USING YOUR EXTERNAL URL
+// ============================================
+// POSTGRESQL (NEON) - USING CONNECTION STRING
+// ============================================
 const pgConfig = {
-  host: 'dpg-d77ri64hg0os73cfht70-a.oregon-postgres.render.com',
-  port: 5432,
-  database: 'eap_yyby',
-  user: 'apiuser_2',
-  password: 'MrwcwxhUENJ5s1fK1qLHeD1UsONoQvjE', // Use the password from your URL
+  connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_wLE5S2PIzdqx@ep-lively-fog-axbzki4d-pooler.c-4.us-east-2.aws.neon.tech/neondb',
   ssl: {
     rejectUnauthorized: false,
     require: true
@@ -138,7 +140,7 @@ async function main() {
     await pgClient.connect();
     console.log('✅ Connected to PostgreSQL\n');
     
-    // List of tables to migrate (from your SQL files)
+    // List of tables to migrate
     const tables = [
       'Categories', 'Genders', 'Stations', 'Clients', 'Tallies', 'Findings', 'Oncologies',
       'Lipids', 'HepatitisBValues', 'HepatitisCValues','BreastExams', 'PAPSmears', 'ViaVillies',

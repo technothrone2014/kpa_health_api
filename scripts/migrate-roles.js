@@ -1,28 +1,36 @@
+// scripts/migrate-roles.js
 const sql = require('mssql');
 const { Client } = require('pg');
 require('dotenv').config();
 
-// SQL Server connection
+// ============================================
+// SQL SERVER CONFIGURATION
+// ============================================
 const sqlConfig = {
-  user: 'api_user2',
-  password: 'Godlovesyou2!',
-  server: 'DESKTOP-PU747QA',
-  port: 1433,
-  database: 'ZoodeskDB',
+  user: process.env.KPA_DB_USER || 'api_user',
+  password: process.env.KPA_DB_PASSWORD || 'Godlovesyou2!',
+  server: process.env.KPA_DB_HOST || 'DESKTOP-5PSVOHG',
+  port: parseInt(process.env.KPA_SERVER_PORT || '1433'),
+  database: process.env.KPA_DB_NAME || 'ZoodeskDB',
   options: {
     encrypt: false,
     trustServerCertificate: true,
+    enableArithAbort: true,
+    connectTimeout: 30000,
+    requestTimeout: 30000,
   }
 };
 
-// PostgreSQL connection
+// ============================================
+// POSTGRESQL (NEON) - USING CONNECTION STRING
+// ============================================
 const pgConfig = {
-  host: 'dpg-d77ri64hg0os73cfht70-a.oregon-postgres.render.com',
-  port: 5432,
-  database: 'eap_yyby',
-  user: 'apiuser_2',
-  password: 'MrwcwxhUENJ5s1fK1qLHeD1UsONoQvjE',
-  ssl: { rejectUnauthorized: false, require: true }
+  connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_wLE5S2PIzdqx@ep-lively-fog-axbzki4d-pooler.c-4.us-east-2.aws.neon.tech/neondb',
+  ssl: {
+    rejectUnauthorized: false,
+    require: true
+  },
+  connectionTimeoutMillis: 10000
 };
 
 async function migrateRoles() {
@@ -33,7 +41,7 @@ async function migrateRoles() {
     const sqlPool = await sql.connect(sqlConfig);
     console.log('✅ Connected to SQL Server');
     
-    // Connect to PostgreSQL
+    // Connect to PostgreSQL - USING CONNECTION STRING
     const pgClient = new Client(pgConfig);
     await pgClient.connect();
     console.log('✅ Connected to PostgreSQL');
@@ -48,7 +56,7 @@ async function migrateRoles() {
     // First, ensure the Roles table exists in PostgreSQL with correct schema
     await pgClient.query(`
       CREATE TABLE IF NOT EXISTS "Roles" (
-        "Id" SERIAL PRIMARY KEY,
+        "Id" INTEGER PRIMARY KEY,
         "Name" VARCHAR(256),
         "NormalizedName" VARCHAR(256)
       )
@@ -56,6 +64,9 @@ async function migrateRoles() {
     console.log('✅ Ensured Roles table exists in PostgreSQL');
     
     // Migrate each role
+    let inserted = 0;
+    let updated = 0;
+    
     for (const role of rolesResult.recordset) {
       // Check if role already exists
       const existingRole = await pgClient.query(
@@ -70,6 +81,7 @@ async function migrateRoles() {
            VALUES ($1, $2, $3)`,
           [role.Id, role.Name, role.NormalizedName]
         );
+        inserted++;
         console.log(`✅ Inserted role: ${role.Name} (ID: ${role.Id})`);
       } else {
         // Update existing role
@@ -79,6 +91,7 @@ async function migrateRoles() {
            WHERE "Id" = $1`,
           [role.Id, role.Name, role.NormalizedName]
         );
+        updated++;
         console.log(`✅ Updated role: ${role.Name} (ID: ${role.Id})`);
       }
     }
@@ -87,12 +100,7 @@ async function migrateRoles() {
     const verifyResult = await pgClient.query('SELECT * FROM "Roles" ORDER BY "Id"');
     console.log('\n📊 Migration Summary:');
     console.log(`   Total roles in PostgreSQL: ${verifyResult.rows.length}`);
-    console.log('\n📋 Roles migrated:');
-    verifyResult.rows.forEach(role => {
-      console.log(`   - ${role.Name} (ID: ${role.Id})`);
-    });
-    
-    console.log('\n🎉 Roles migration completed successfully!');
+    console.log(`   Inserted: ${inserted}, Updated: ${updated}`);
     
     await sqlPool.close();
     await pgClient.end();
