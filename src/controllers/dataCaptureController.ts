@@ -1,3 +1,5 @@
+// dataCaptureController.ts - UPDATED
+
 import { Request, Response } from 'express';
 import { poolPromise } from '../db/pool';
 import { auditLog } from '../services/auditService';
@@ -12,6 +14,19 @@ const getClientIp = (req: Request): string | null => {
 
 const getUserAgent = (req: Request): string | null => {
   return req.headers['user-agent'] || null;
+};
+
+// Calculate age from date of birth
+const calculateAge = (dateOfBirth: Date): number | null => {
+  if (!dateOfBirth) return null;
+  const today = new Date();
+  const birthDate = new Date(dateOfBirth);
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
 };
 
 // ==================== CLIENT MANAGEMENT ====================
@@ -30,8 +45,7 @@ export const registerClient = async (req: Request, res: Response) => {
       PhoneNumber,
       CategoryId,
       StationId,
-      DateOfBirth,
-      Age
+      DateOfBirth
     } = req.body;
 
     // Validate required fields
@@ -60,14 +74,14 @@ export const registerClient = async (req: Request, res: Response) => {
     const result = await pool.query(
       `INSERT INTO "Clients" (
         "UserId", "IDNumber", "FullName", "FirstName", "LastName", "GenderId",
-        "PhoneNumber", "CategoryId", "StationId", "DateOfBirth", "Age",
+        "PhoneNumber", "CategoryId", "StationId", "DateOfBirth",
         "PostedOn", "UpdatedOn", "Pinned", "Status", "Deleted"
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING "Id"`,
       [
         UserId || 1, IDNumber, FullName || `${FirstName} ${LastName}`, FirstName, LastName,
         GenderId || 1, PhoneNumber, CategoryId || 1, StationId || 1,
-        DateOfBirth, Age || 0, now, now, false, true, false
+        DateOfBirth, now, now, false, true, false
       ]
     );
 
@@ -109,7 +123,7 @@ export const searchClients = async (req: Request, res: Response) => {
       `SELECT 
         c."Id", c."IDNumber", c."FullName", c."FirstName", c."LastName",
         c."PhoneNumber", c."GenderId", c."CategoryId", c."StationId",
-        c."DateOfBirth", c."Age", c."Status",
+        c."DateOfBirth", c."Status",
         cat."Title" as "CategoryTitle",
         s."Title" as "StationTitle",
         g."Title" as "GenderTitle"
@@ -130,7 +144,13 @@ export const searchClients = async (req: Request, res: Response) => {
       [searchTerm]
     );
 
-    res.json(result.rows);
+    // Add calculated age to each result
+    const results = result.rows.map(client => ({
+      ...client,
+      Age: calculateAge(client.DateOfBirth)
+    }));
+
+    res.json(results);
   } catch (error) {
     console.error('Error searching clients:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -147,7 +167,7 @@ export const getClientById = async (req: Request, res: Response) => {
       `SELECT 
         c."Id", c."IDNumber", c."FullName", c."FirstName", c."LastName",
         c."PhoneNumber", c."GenderId", c."CategoryId", c."StationId",
-        c."DateOfBirth", c."Age", c."Status", c."PostedOn", c."UpdatedOn",
+        c."DateOfBirth", c."Status", c."PostedOn", c."UpdatedOn",
         cat."Title" as "CategoryTitle",
         s."Title" as "StationTitle",
         g."Title" as "GenderTitle"
@@ -163,7 +183,11 @@ export const getClientById = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'Client not found' });
     }
 
-    res.json(result.rows[0]);
+    const client = result.rows[0];
+    // Add calculated age
+    client.Age = calculateAge(client.DateOfBirth);
+
+    res.json(client);
   } catch (error) {
     console.error('Error fetching client:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -190,14 +214,13 @@ export const checkFieldFindings = async (req: Request, res: Response) => {
 
 // ==================== FIELD FINDINGS (TALLIES) ====================
 
-// Save field findings (Tallies)
+// Save field findings (Tallies) - Using Database Function
 export const saveFieldFindings = async (req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
     const {
       ClientId,
       StationId,
-      Age,
       Weight,
       Height,
       BMIValue,
@@ -227,15 +250,23 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId || 1;
     const now = new Date();
 
-    // Get client's gender and category
+    // Get client info with age calculated by PostgreSQL
     const clientInfo = await pool.query(
-      `SELECT "GenderId", "CategoryId" FROM "Clients" WHERE "Id" = $1`,
+      `SELECT 
+        "GenderId", 
+        "CategoryId",
+        calculate_age_at_date("DateOfBirth", NOW()) as "Age"
+      FROM "Clients" 
+      WHERE "Id" = $1 AND "Deleted" = false`,
       [ClientId]
     );
 
     if (clientInfo.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Client not found' });
     }
+
+    const client = clientInfo.rows[0];
+    const age = client.Age || 40; // Fallback to 40 if null
 
     const result = await pool.query(
       `INSERT INTO "Tallies" (
@@ -249,8 +280,8 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
       RETURNING "Id"`,
       [
-        userId, ClientId, clientInfo.rows[0].GenderId, clientInfo.rows[0].CategoryId, StationId,
-        Age, Weight, Height, BMIValue, BMIINTValueId,
+        userId, ClientId, client.GenderId, client.CategoryId, StationId,
+        age, Weight, Height, BMIValue, BMIINTValueId,
         Waist, Hip, WHRatio, Systolic, Diastolic, BPINTValueId,
         RBSValue, RBSINTValueId, BMD || false, CancerSCN || false, DentalSCN || false,
         ECG || false, EyeSCN || false, FBS || false, HBA1C || false, HepatitisBC || false,
@@ -265,7 +296,7 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
       'Tallies',
       result.rows[0].Id.toString(),
       null,
-      { ClientId, StationId },
+      { ClientId, StationId, Age: age },
       getClientIp(req),
       getUserAgent(req)
     );
@@ -273,7 +304,8 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
     res.status(201).json({
       success: true,
       message: 'Field findings saved successfully',
-      Id: result.rows[0].Id
+      Id: result.rows[0].Id,
+      Age: age
     });
   } catch (error) {
     console.error('Error saving field findings:', error);
