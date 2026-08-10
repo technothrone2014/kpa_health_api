@@ -151,7 +151,7 @@ export const getCurrentUser = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    console.log('User data being returned:', user);
+    console.log('✅ User data being returned:', user);
     
     // Return in the format expected by the frontend
     res.json({ 
