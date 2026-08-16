@@ -489,7 +489,12 @@ export const getLookupValues = async (req: Request, res: Response) => {
     const pool = await poolPromise;
     const { type } = req.params;
 
+    console.log(`🔍 Fetching lookup values for type: ${type}`);
+
     const tableMap: Record<string, string> = {
+      'bmi-values': 'BMIINTValues',
+      'bp-values': 'BPINTValues',
+      'rbs-values': 'RBSINTValues',
       'breast-exam-values': 'BreastExams',
       'pap-smear-values': 'PAPSmears',
       'via-villi-values': 'ViaVillies',
@@ -505,17 +510,60 @@ export const getLookupValues = async (req: Request, res: Response) => {
 
     const tableName = tableMap[type];
     if (!tableName) {
-      return res.status(400).json({ success: false, message: 'Invalid lookup type' });
+      console.log(`❌ Invalid lookup type: ${type}`);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid lookup type' 
+      });
     }
 
-    const result = await pool.query(
-      `SELECT "Id", "Title" FROM "${tableName}" WHERE "Deleted" = false ORDER BY "Id"`
+    console.log(`✅ Fetching from table: ${tableName}`);
+
+    // Check if table exists first
+    const tableCheck = await pool.query(
+      `SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = $1
+      )`,
+      [tableName]
     );
+
+    if (!tableCheck.rows[0].exists) {
+      console.log(`❌ Table ${tableName} does not exist`);
+      return res.status(404).json({
+        success: false,
+        message: `Table ${tableName} not found`
+      });
+    }
+
+    // Check if Deleted column exists
+    const columnCheck = await pool.query(
+      `SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = $1 
+        AND column_name = 'Deleted'
+      )`,
+      [tableName]
+    );
+
+    let query = `SELECT "Id", "Title" FROM "${tableName}"`;
+    if (columnCheck.rows[0].exists) {
+      query += ` WHERE "Deleted" = false`;
+    }
+    query += ` ORDER BY "Id"`;
+
+    const result = await pool.query(query);
+    console.log(`✅ Found ${result.rows.length} records in ${tableName}`);
 
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching lookup values:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
   }
 };
 
