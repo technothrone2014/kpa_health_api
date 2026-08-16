@@ -519,7 +519,7 @@ export const getLookupValues = async (req: Request, res: Response) => {
 
     console.log(`✅ Fetching from table: ${tableName}`);
 
-    // Check if table exists first
+    // Check if table exists
     const tableCheck = await pool.query(
       `SELECT EXISTS (
         SELECT FROM information_schema.tables 
@@ -537,6 +537,9 @@ export const getLookupValues = async (req: Request, res: Response) => {
       });
     }
 
+    // ✅ FIX: Include StartIndex and StopIndex in the query
+    let query = `SELECT "Id", "Title", "StartIndex", "StopIndex" FROM "${tableName}"`;
+    
     // Check if Deleted column exists
     const columnCheck = await pool.query(
       `SELECT EXISTS (
@@ -548,7 +551,6 @@ export const getLookupValues = async (req: Request, res: Response) => {
       [tableName]
     );
 
-    let query = `SELECT "Id", "Title" FROM "${tableName}"`;
     if (columnCheck.rows[0].exists) {
       query += ` WHERE "Deleted" = false`;
     }
