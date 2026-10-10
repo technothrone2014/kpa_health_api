@@ -3,6 +3,7 @@
 import { Request, Response } from 'express';
 import { poolPromise } from '../db/pool';
 import { auditLog } from '../services/auditService';
+import { interpretValue, INTERPRETATION_TABLES } from '../services/interpretationService';
 
 // Helper functions for safe parameter passing
 const getClientIp = (req: Request): string | null => {
@@ -232,15 +233,12 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
       Weight,
       Height,
       BMIValue,
-      BMIINTValueId,
       Waist,
       Hip,
       WHRatio,
       Systolic,
       Diastolic,
-      BPINTValueId,
       RBSValue,
-      RBSINTValueId,
       BMD,
       CancerSCN,
       DentalSCN,
@@ -275,6 +273,17 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
 
     const client = clientInfo.rows[0];
     const age = client.Age || 40; // Fallback to 40 if null
+
+    // 🔒 Server-side interpretation — single source of truth
+    const [bmiHit, bpHit, rbsHit] = await Promise.all([
+      interpretValue(pool, 'bmi', Number(BMIValue)),
+      interpretValue(pool, 'bp',  Number(Systolic)),
+      interpretValue(pool, 'rbs', Number(RBSValue)),
+    ]);
+
+    const BMIINTValueId = bmiHit?.Id ?? 6;
+    const BPINTValueId  = bpHit?.Id  ?? 6;
+    const RBSINTValueId = rbsHit?.Id ?? 5;
 
     const result = await pool.query(
       `INSERT INTO "Tallies" (
@@ -320,6 +329,31 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
+
+
+// ==================== INTERPRETATION (PREVIEW) ====================
+
+// Preview the interpretation for a raw value (used by the frontend for live badges)
+export const interpretLookupValue = async (req: Request, res: Response) => {
+  try {
+    const pool = await poolPromise;
+    const { type } = req.params;
+    const raw = req.query.value as string | undefined;
+
+    if (!INTERPRETATION_TABLES[type]) {
+      return res.status(400).json({ success: false, message: 'Invalid interpretation type' });
+    }
+
+    const value = raw === undefined || raw === '' ? null : Number(raw);
+    const hit = await interpretValue(pool, type, value);
+
+    res.json({ success: true, interpretation: hit });
+  } catch (error) {
+    console.error('Error interpreting value:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
 
 // ==================== LAB FINDINGS ====================
 

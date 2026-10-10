@@ -11,7 +11,8 @@ import {
   updateLabFindings,
   updateOncologyFindings,
   deleteFieldFindings,
-  getLookupValues
+  getLookupValues,
+  interpretLookupValue
 } from '../controllers/dataCaptureController';
 import { authMiddleware } from '../middleware/authMiddleware';
 
@@ -38,6 +39,12 @@ router.put('/findings/:id', updateLabFindings);
 // Oncology findings
 router.post('/oncologies', saveOncologyFindings);
 router.put('/oncologies/:id', updateOncologyFindings);
+
+// Interpretation preview (server-side range lookup)
+router.get('/lookups/interpret/:type', interpretLookupValue);
+
+// Lookup values
+router.get('/lookups/:type', getLookupValues);
 
 // Lookup values
 router.get('/lookups/:type', getLookupValues);
