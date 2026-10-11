@@ -46,7 +46,4 @@ router.get('/lookups/interpret/:type', interpretLookupValue);
 // Lookup values
 router.get('/lookups/:type', getLookupValues);
 
-// Lookup values
-router.get('/lookups/:type', getLookupValues);
-
 export default router;
