@@ -277,7 +277,7 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
     // 🔒 Server-side interpretation — single source of truth
     const [bmiHit, bpHit, rbsHit] = await Promise.all([
       interpretValue(pool, 'bmi', Number(BMIValue)),
-      interpretValue(pool, 'bp',  Number(Systolic)),
+      interpretValue(pool, 'bp',  Number(Diastolic)),
       interpretValue(pool, 'rbs', Number(RBSValue)),
     ]);
 
