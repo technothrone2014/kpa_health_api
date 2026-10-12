@@ -16,6 +16,12 @@ import {
 } from '../controllers/dataCaptureController';
 import { authMiddleware } from '../middleware/authMiddleware';
 
+import {
+  listConfigItems,
+  createConfigItem,
+  toggleConfigItem,
+} from '../controllers/adminConfigController';
+
 const router = express.Router();
 
 // All routes require authentication
@@ -45,5 +51,10 @@ router.get('/lookups/interpret/:type', interpretLookupValue);
 
 // Lookup values
 router.get('/lookups/:type', getLookupValues);
+
+// ==================== ADMIN CONFIG ====================
+router.get('/admin-config/:type', listConfigItems);
+router.post('/admin-config/:type', createConfigItem);
+router.patch('/admin-config/:type/:id', toggleConfigItem);
 
 export default router;
