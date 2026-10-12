@@ -76,17 +76,19 @@ export async function interpretValue(
   if (value === null || value === undefined || Number.isNaN(value)) {
     return null;
   }
-  if (!options.allowNegative && value <= 0) {
+  if (!options.allowNegative && value < 0) {
     return null;
   }
 
   const table = INTERPRETATION_TABLES[type];
   if (!table) return null;
 
-  const result = await pool.query(
+  // 1) Range match — StartIndex <= v < StopIndex
+  const rangeResult = await pool.query(
     `SELECT "Id", "Title", "StartIndex", "StopIndex"
      FROM "${table}"
      WHERE "Deleted" = false
+       AND "StartIndex" < "StopIndex"
        AND "StartIndex" <= $1
        AND "StopIndex"  >  $1
      ORDER BY "Id"
@@ -94,14 +96,37 @@ export async function interpretValue(
     [value]
   );
 
-  if (result.rows.length === 0) return null;
+  if (rangeResult.rows.length > 0) {
+    const row = rangeResult.rows[0];
+    return {
+      Id: row.Id,
+      Title: row.Title,
+      StartIndex: Number(row.StartIndex),
+      StopIndex: Number(row.StopIndex),
+      status: classify(row.Title),
+    };
+  }
 
-  const row = result.rows[0];
-  return {
-    Id: row.Id,
-    Title: row.Title,
-    StartIndex: Number(row.StartIndex),
-    StopIndex: Number(row.StopIndex),
-    status: classify(row.Title),
-  };
+  // 2) Fallback — first row whose StartIndex === StopIndex (sentinel / N/A)
+  const sentinelResult = await pool.query(
+    `SELECT "Id", "Title", "StartIndex", "StopIndex"
+     FROM "${table}"
+     WHERE "Deleted" = false
+       AND "StartIndex" = "StopIndex"
+     ORDER BY "Id"
+     LIMIT 1`
+  );
+
+  if (sentinelResult.rows.length > 0) {
+    const row = sentinelResult.rows[0];
+    return {
+      Id: row.Id,
+      Title: row.Title,
+      StartIndex: Number(row.StartIndex),
+      StopIndex: Number(row.StopIndex),
+      status: classify(row.Title),
+    };
+  }
+
+  return null;
 }
