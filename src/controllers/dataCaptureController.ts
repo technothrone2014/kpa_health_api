@@ -234,9 +234,7 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
       Systolic, Diastolic,
       RBSValue,
       BPRemarkId, RBSRemarkId,
-      ReferralIds = [],
-      BMD, CancerSCN, DentalSCN, ECG, EyeSCN, FBS, HBA1C,
-      HepatitisBC, Lipid, Microalbumin, NutritionCounselling, PSA
+      ReferralIds = []
     } = req.body;
 
     const userId = (req as any).user?.userId || 1;
@@ -388,30 +386,20 @@ export const saveLabFindings = async (req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
     const {
-      ClientId,
-      StationId,
+      ClientId, StationId,
       FBSValue,
-      FBSINTValueId,
       HBA1CValue,
-      HBA1CINTValueId,
       LipidId,
       MicroalbuminValue,
-      MicroalbuminINTValueId,
       BMDValue,
-      BMDINTValueId,
       PSAValue,
-      PSAINTValueId,
-      HepatitisBValueId,
-      HepatitisCValueId
+      HepatitisBValueId, HepatitisCValueId
     } = req.body;
 
     const userId = (req as any).user?.userId || 1;
     const now = new Date();
 
-    // Verify client has field findings first
     // Get client's gender and category
-    // Note: Lab findings no longer require prior field findings — a client may
-    // be backlogged or legacy, but their lab results are still valid to capture.
     const clientInfo = await pool.query(
       `SELECT "GenderId", "CategoryId" FROM "Clients" WHERE "Id" = $1 AND "Deleted" = false`,
       [ClientId]
@@ -420,6 +408,21 @@ export const saveLabFindings = async (req: Request, res: Response) => {
     if (clientInfo.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Client not found' });
     }
+
+    // 🔒 Server-side interpretations — single source of truth
+    const [fbsHit, hba1cHit, microalbuminHit, psaHit, bmdHit] = await Promise.all([
+      interpretValue(pool, 'fbs',          Number(FBSValue)),
+      interpretValue(pool, 'hba1c',        Number(HBA1CValue)),
+      interpretValue(pool, 'microalbumin', Number(MicroalbuminValue)),
+      interpretValue(pool, 'psa',          Number(PSAValue)),
+      interpretValue(pool, 'bmd',          Number(BMDValue), { allowNegative: true }),
+    ]);
+
+    const FBSINTValueId          = fbsHit?.Id          ?? null;
+    const HBA1CINTValueId        = hba1cHit?.Id        ?? null;
+    const MicroalbuminINTValueId = microalbuminHit?.Id ?? null;
+    const PSAINTValueId          = psaHit?.Id          ?? null;
+    const BMDINTValueId          = bmdHit?.Id          ?? null;
 
     const result = await pool.query(
       `INSERT INTO "Findings" (
