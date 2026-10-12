@@ -15,3 +15,7 @@ git commit -m "Initial commit - KPA Health API frontend"
 git branch -M main
 git remote add origin https://github.com/jayjchiringz/kpa_health_ui.git
 git push -u origin main
+
+
+# RUN SCRIPT
+node scripts/migrate-remarks.js

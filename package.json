@@ -23,7 +23,7 @@
     "express": "^4.22.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.3",
-    "mssql": "^12.7.0",
+    "mssql": "^12.7.4",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.5",
     "otp-generator": "^4.0.1",

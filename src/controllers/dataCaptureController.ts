@@ -228,29 +228,14 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
     const {
-      ClientId,
-      StationId,
-      Weight,
-      Height,
-      BMIValue,
-      Waist,
-      Hip,
-      WHRatio,
-      Systolic,
-      Diastolic,
+      ClientId, StationId,
+      Weight, Height, BMIValue,
+      Waist, Hip, WHRatio,
+      Systolic, Diastolic,
       RBSValue,
-      BMD,
-      CancerSCN,
-      DentalSCN,
-      ECG,
-      EyeSCN,
-      FBS,
-      HBA1C,
-      HepatitisBC,
-      Lipid,
-      Microalbumin,
-      NutritionCounselling,
-      PSA
+      BPRemarkId, RBSRemarkId,
+      BMD, CancerSCN, DentalSCN, ECG, EyeSCN, FBS, HBA1C,
+      HepatitisBC, Lipid, Microalbumin, NutritionCounselling, PSA
     } = req.body;
 
     const userId = (req as any).user?.userId || 1;
@@ -290,19 +275,29 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
         "UserId", "ClientId", "GenderId", "CategoryId", "StationId",
         "Age", "Weight", "Height", "BMIValue", "BMIINTValueId",
         "Waist", "Hip", "WHRatio", "Systolic", "Diastolic", "BPINTValueId",
-        "RBSValue", "RBSINTValueId", "BMD", "CancerSCN", "DentalSCN",
-        "ECG", "EyeSCN", "FBS", "HBA1C", "HepatitisBC", "Lipid",
-        "Microalbumin", "NutritionCounselling", "PSA",
+        "BPRemarkId",
+        "RBSValue", "RBSINTValueId",
+        "RBSRemarkId",
+        "BMD", "CancerSCN", "DentalSCN", "ECG", "EyeSCN", "FBS", "HBA1C",
+        "HepatitisBC", "Lipid", "Microalbumin", "NutritionCounselling", "PSA",
         "PostedOn", "UpdatedOn", "Pinned", "Status", "Deleted"
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
-      RETURNING "Id"`,
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
+        $31, $32, $33, $34, $35, $36, $37
+      ) RETURNING "Id"`,
       [
         userId, ClientId, client.GenderId, client.CategoryId, StationId,
         age, Weight, Height, BMIValue, BMIINTValueId,
         Waist, Hip, WHRatio, Systolic, Diastolic, BPINTValueId,
-        RBSValue, RBSINTValueId, BMD || false, CancerSCN || false, DentalSCN || false,
-        ECG || false, EyeSCN || false, FBS || false, HBA1C || false, HepatitisBC || false,
-        Lipid || false, Microalbumin || false, NutritionCounselling || false, PSA || false,
+        BPRemarkId ?? null,
+        RBSValue, RBSINTValueId,
+        RBSRemarkId ?? null,
+        BMD || false, CancerSCN || false, DentalSCN || false,
+        ECG || false, EyeSCN || false, FBS || false, HBA1C || false,
+        HepatitisBC || false, Lipid || false, Microalbumin || false,
+        NutritionCounselling || false, PSA || false,
         now, now, false, true, false
       ]
     );
@@ -539,7 +534,9 @@ export const getLookupValues = async (req: Request, res: Response) => {
       'bmd-values': 'BMDINTValues',
       'psa-values': 'PSAINTValues',
       'hepatitis-b-values': 'HepatitisBValues',
-      'hepatitis-c-values': 'HepatitisCValues'
+      'hepatitis-c-values': 'HepatitisCValues',
+      'bp-remark-values': 'BPRemarks',
+      'rbs-remark-values': 'RBSRemarks'
     };
 
     const tableName = tableMap[type];
@@ -571,10 +568,24 @@ export const getLookupValues = async (req: Request, res: Response) => {
       });
     }
 
-    // ✅ FIX: Include StartIndex and StopIndex in the query
-    let query = `SELECT "Id", "Title", "StartIndex", "StopIndex" FROM "${tableName}"`;
-    
-    // Check if Deleted column exists
+    // ✅ Build column list dynamically — remark tables don't have StartIndex/StopIndex
+    const optionalCols = ['StartIndex', 'StopIndex'];
+    const colResult = await pool.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = $1
+         AND column_name = ANY($2)`,
+      [tableName, optionalCols]
+    );
+    const presentCols = new Set(colResult.rows.map((r: any) => r.column_name));
+
+    const selectCols = ['"Id"', '"Title"'];
+    if (presentCols.has('StartIndex')) selectCols.push('"StartIndex"');
+    if (presentCols.has('StopIndex'))  selectCols.push('"StopIndex"');
+
+    let query = `SELECT ${selectCols.join(', ')} FROM "${tableName}"`;
+
+    // Soft-delete filter
     const columnCheck = await pool.query(
       `SELECT EXISTS (
         SELECT FROM information_schema.columns 
@@ -602,7 +613,6 @@ export const getLookupValues = async (req: Request, res: Response) => {
     });
   }
 };
-
 // ==================== UPDATE FUNCTIONS ====================
 
 // Update field findings
