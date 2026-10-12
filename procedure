@@ -19,3 +19,7 @@ git push -u origin main
 
 # RUN SCRIPT
 node scripts/migrate-remarks.js
+
+git add .
+git commit -m "EAP api: Optimized backend"
+git push

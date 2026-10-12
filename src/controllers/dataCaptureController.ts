@@ -409,23 +409,17 @@ export const saveLabFindings = async (req: Request, res: Response) => {
     const now = new Date();
 
     // Verify client has field findings first
-    const hasFindings = await pool.query(
-      `SELECT COUNT(*) FROM "Tallies" WHERE "ClientId" = $1 AND "Deleted" = false`,
-      [ClientId]
-    );
-
-    if (parseInt(hasFindings.rows[0].count) === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Client must have field findings recorded before lab findings'
-      });
-    }
-
     // Get client's gender and category
+    // Note: Lab findings no longer require prior field findings — a client may
+    // be backlogged or legacy, but their lab results are still valid to capture.
     const clientInfo = await pool.query(
-      `SELECT "GenderId", "CategoryId" FROM "Clients" WHERE "Id" = $1`,
+      `SELECT "GenderId", "CategoryId" FROM "Clients" WHERE "Id" = $1 AND "Deleted" = false`,
       [ClientId]
     );
+
+    if (clientInfo.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
+    }
 
     const result = await pool.query(
       `INSERT INTO "Findings" (
@@ -485,19 +479,6 @@ export const saveOncologyFindings = async (req: Request, res: Response) => {
 
     const userId = (req as any).user?.userId || 1;
     const now = new Date();
-
-    // Verify client has field findings first
-    const hasFindings = await pool.query(
-      `SELECT COUNT(*) FROM "Tallies" WHERE "ClientId" = $1 AND "Deleted" = false`,
-      [ClientId]
-    );
-
-    if (parseInt(hasFindings.rows[0].count) === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Client must have field findings recorded before oncology screening'
-      });
-    }
 
     // Get client's gender and category
     const clientInfo = await pool.query(
