@@ -234,12 +234,29 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
       Systolic, Diastolic,
       RBSValue,
       BPRemarkId, RBSRemarkId,
+      ReferralIds = [],
       BMD, CancerSCN, DentalSCN, ECG, EyeSCN, FBS, HBA1C,
       HepatitisBC, Lipid, Microalbumin, NutritionCounselling, PSA
     } = req.body;
 
     const userId = (req as any).user?.userId || 1;
     const now = new Date();
+
+    const referralIdArray: number[] = Array.isArray(ReferralIds)
+      ? ReferralIds.map(Number).filter(n => Number.isFinite(n) && n > 0)
+      : [];
+
+    let legacyColumns = new Set<string>();
+    if (referralIdArray.length > 0) {
+      const refMap = await pool.query(
+        `SELECT "LegacyColumn" FROM "Referrals"
+         WHERE "Id" = ANY($1) AND "LegacyColumn" IS NOT NULL`,
+        [referralIdArray]
+      );
+      refMap.rows.forEach((r: any) => legacyColumns.add(r.LegacyColumn));
+    }
+
+    const hasLegacy = (col: string) => legacyColumns.has(col);
 
     // Get client info with age calculated by PostgreSQL
     const clientInfo = await pool.query(
@@ -294,13 +311,27 @@ export const saveFieldFindings = async (req: Request, res: Response) => {
         BPRemarkId ?? null,
         RBSValue, RBSINTValueId,
         RBSRemarkId ?? null,
-        BMD || false, CancerSCN || false, DentalSCN || false,
-        ECG || false, EyeSCN || false, FBS || false, HBA1C || false,
-        HepatitisBC || false, Lipid || false, Microalbumin || false,
-        NutritionCounselling || false, PSA || false,
+        hasLegacy('BMD'), hasLegacy('CancerSCN'), hasLegacy('DentalSCN'),
+        hasLegacy('ECG'), hasLegacy('EyeSCN'), hasLegacy('FBS'), hasLegacy('HBA1C'),
+        hasLegacy('HepatitisBC'), hasLegacy('Lipid'), hasLegacy('Microalbumin'),
+        hasLegacy('NutritionCounselling'), hasLegacy('PSA'),
         now, now, false, true, false
       ]
     );
+
+    const newTallyId = result.rows[0].Id;
+
+    // 🔗 Write to the dynamic join table
+    if (referralIdArray.length > 0) {
+      const values = referralIdArray
+        .map((_, i) => `($1, $${i + 2})`)
+        .join(', ');
+      await pool.query(
+        `INSERT INTO "TallyReferrals" ("TallyId", "ReferralId") VALUES ${values}
+         ON CONFLICT ("TallyId", "ReferralId") DO NOTHING`,
+        [newTallyId, ...referralIdArray]
+      );
+    }
 
     await auditLog(
       userId,
@@ -536,7 +567,8 @@ export const getLookupValues = async (req: Request, res: Response) => {
       'hepatitis-b-values': 'HepatitisBValues',
       'hepatitis-c-values': 'HepatitisCValues',
       'bp-remark-values': 'BPRemarks',
-      'rbs-remark-values': 'RBSRemarks'
+      'rbs-remark-values': 'RBSRemarks',
+      'referral-values': 'Referrals',
     };
 
     const tableName = tableMap[type];
