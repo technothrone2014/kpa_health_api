@@ -493,11 +493,24 @@ export const saveOncologyFindings = async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId || 1;
     const now = new Date();
 
+    // Normalize FK values — 0/NaN → null (means "not performed")
+    const toFk = (v: any): number | null => {
+      const n = parseInt(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const safeBreastExamId = toFk(BreastExamId);
+    const safePapSmearId   = toFk(PAPSmearId);
+    const safeViaVilliId   = toFk(ViaVilliId);
+
     // Get client's gender and category
     const clientInfo = await pool.query(
-      `SELECT "GenderId", "CategoryId" FROM "Clients" WHERE "Id" = $1`,
+      `SELECT "GenderId", "CategoryId" FROM "Clients" WHERE "Id" = $1 AND "Deleted" = false`,
       [ClientId]
     );
+
+    if (clientInfo.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
+    }
 
     const result = await pool.query(
       `INSERT INTO "Oncologies" (
@@ -508,7 +521,7 @@ export const saveOncologyFindings = async (req: Request, res: Response) => {
       RETURNING "Id"`,
       [
         userId, ClientId, clientInfo.rows[0].GenderId, clientInfo.rows[0].CategoryId, StationId,
-        BreastExamId, PAPSmearId, ViaVilliId,
+        safeBreastExamId, safePapSmearId, safeViaVilliId,
         now, now, false, true, false
       ]
     );
