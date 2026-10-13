@@ -424,6 +424,16 @@ export const saveLabFindings = async (req: Request, res: Response) => {
     const PSAINTValueId          = psaHit?.Id          ?? null;
     const BMDINTValueId          = bmdHit?.Id          ?? null;
 
+    // Normalize FK values — 0 or NaN means "not tested" → null
+    const toFk = (v: any): number | null => {
+      const n = parseInt(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+
+    const safeLipidId           = toFk(LipidId);
+    const safeHepatitisBValueId = toFk(HepatitisBValueId);
+    const safeHepatitisCValueId = toFk(HepatitisCValueId);
+
     const result = await pool.query(
       `INSERT INTO "Findings" (
         "UserId", "ClientId", "GenderId", "CategoryId", "StationId",
@@ -437,9 +447,9 @@ export const saveLabFindings = async (req: Request, res: Response) => {
       [
         userId, ClientId, clientInfo.rows[0].GenderId, clientInfo.rows[0].CategoryId, StationId,
         FBSValue, FBSINTValueId, HBA1CValue, HBA1CINTValueId,
-        LipidId, MicroalbuminValue, MicroalbuminINTValueId,
+        safeLipidId, MicroalbuminValue, MicroalbuminINTValueId,
         BMDValue, BMDINTValueId, PSAValue, PSAINTValueId,
-        HepatitisBValueId, HepatitisCValueId,
+        safeHepatitisBValueId, safeHepatitisCValueId,
         now, now, false, true, false
       ]
     );
