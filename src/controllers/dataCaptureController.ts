@@ -659,37 +659,97 @@ export const updateFieldFindings = async (req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
     const { id } = req.params;
-    const updates = req.body;
     const userId = (req as any).user?.userId || 1;
     const now = new Date();
 
-    // Build dynamic update query
-    const setClauses: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
+    // Whitelist of editable columns
+    const EDITABLE = new Set([
+      'Weight', 'Height', 'Waist', 'Hip',
+      'Systolic', 'Diastolic',
+      'BPRemarkId', 'RBSValue', 'RBSRemarkId',
+      'ReferralIds', // handled separately
+    ]);
 
-    for (const [key, value] of Object.entries(updates)) {
-      if (key !== 'Id' && key !== 'ClientId') {
-        setClauses.push(`"${key}" = $${paramIndex++}`);
-        values.push(value);
-      }
+    // Normalize + whitelist
+    const body: Record<string, any> = {};
+    for (const [k, v] of Object.entries(req.body)) {
+      if (EDITABLE.has(k)) body[k] = v;
     }
 
-    setClauses.push(`"UpdatedOn" = $${paramIndex++}`);
-    values.push(now);
-    values.push(id);
-
-    const query = `
-      UPDATE "Tallies" 
-      SET ${setClauses.join(', ')}
-      WHERE "Id" = $${paramIndex} AND "Deleted" = false
-      RETURNING "Id"
-    `;
-
-    const result = await pool.query(query, values);
-
-    if (result.rows.length === 0) {
+    // Fetch current row for recomputation + gender/category sanity
+    const current = await pool.query(
+      `SELECT t.*, c."GenderId", c."CategoryId"
+       FROM "Tallies" t
+       JOIN "Clients" c ON t."ClientId" = c."Id"
+       WHERE t."Id" = $1 AND t."Deleted" = false`,
+      [id]
+    );
+    if (current.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Field findings not found' });
+    }
+    const cur = current.rows[0];
+
+    // Compute updated values
+    const weight = body.Weight !== undefined ? Number(body.Weight) : Number(cur.Weight);
+    const height = body.Height !== undefined ? Number(body.Height) : Number(cur.Height);
+    const waist = body.Waist !== undefined ? Number(body.Waist) : Number(cur.Waist);
+    const hip = body.Hip !== undefined ? Number(body.Hip) : Number(cur.Hip);
+    const systolic = body.Systolic !== undefined ? Number(body.Systolic) : Number(cur.Systolic);
+    const diastolic = body.Diastolic !== undefined ? Number(body.Diastolic) : Number(cur.Diastolic);
+    const rbsValue = body.RBSValue !== undefined ? Number(body.RBSValue) : Number(cur.RBSValue);
+    const bpRemarkId = body.BPRemarkId !== undefined ? body.BPRemarkId : cur.BPRemarkId;
+    const rbsRemarkId = body.RBSRemarkId !== undefined ? body.RBSRemarkId : cur.RBSRemarkId;
+
+    // Recompute derived + interpretation FKs
+    const bmi = (weight && height) ? weight / ((height / 100) ** 2) : 0;
+    const whr = (waist && hip && hip > 0) ? waist / hip : 0;
+
+    const [bmiHit, bpHit, rbsHit] = await Promise.all([
+      interpretValue(pool, 'bmi', bmi),
+      interpretValue(pool, 'bp', diastolic),
+      interpretValue(pool, 'rbs', rbsValue),
+    ]);
+
+    const BMIINTValueId = bmiHit?.Id ?? 6;
+    const BPINTValueId  = bpHit?.Id  ?? 6;
+    const RBSINTValueId = rbsHit?.Id ?? 5;
+
+    // Update Tallies
+    await pool.query(
+      `UPDATE "Tallies" SET
+        "Weight" = $1, "Height" = $2, "BMIValue" = $3, "BMIINTValueId" = $4,
+        "Waist" = $5, "Hip" = $6, "WHRatio" = $7,
+        "Systolic" = $8, "Diastolic" = $9, "BPINTValueId" = $10,
+        "BPRemarkId" = $11,
+        "RBSValue" = $12, "RBSINTValueId" = $13, "RBSRemarkId" = $14,
+        "UpdatedOn" = $15
+       WHERE "Id" = $16`,
+      [
+        weight, height, bmi, BMIINTValueId,
+        waist, hip, whr,
+        systolic, diastolic, BPINTValueId,
+        bpRemarkId,
+        rbsValue, RBSINTValueId, rbsRemarkId,
+        now, id,
+      ]
+    );
+
+    // Update referral join table if ReferralIds was provided
+    if (Array.isArray(body.ReferralIds)) {
+      const referralIds: number[] = body.ReferralIds
+        .map(Number)
+        .filter((n: number) => Number.isFinite(n) && n > 0);
+
+      await pool.query(`DELETE FROM "TallyReferrals" WHERE "TallyId" = $1`, [id]);
+
+      if (referralIds.length > 0) {
+        const placeholders = referralIds.map((_, i) => `($1, $${i + 2})`).join(', ');
+        await pool.query(
+          `INSERT INTO "TallyReferrals" ("TallyId", "ReferralId") VALUES ${placeholders}
+           ON CONFLICT ("TallyId", "ReferralId") DO NOTHING`,
+          [id, ...referralIds]
+        );
+      }
     }
 
     await auditLog(
@@ -698,16 +758,12 @@ export const updateFieldFindings = async (req: Request, res: Response) => {
       'Tallies',
       id,
       null,
-      updates,
+      { ...body, recomputed: { bmi, whr, BMIINTValueId, BPINTValueId, RBSINTValueId } },
       getClientIp(req),
       getUserAgent(req)
     );
 
-    res.json({
-      success: true,
-      message: 'Field findings updated successfully',
-      Id: result.rows[0].Id
-    });
+    res.json({ success: true, message: 'Field findings updated', Id: id });
   } catch (error) {
     console.error('Error updating field findings:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -832,8 +888,132 @@ export const updateOncologyFindings = async (req: Request, res: Response) => {
   }
 };
 
-// ==================== DELETE FUNCTIONS (Soft Delete) ====================
+// ==================== UPDATE CLIENT ====================
+export const updateClient = async (req: Request, res: Response) => {
+  try {
+    const pool = await poolPromise;
+    const { id } = req.params;
+    const {
+      IDNumber,
+      FirstName,
+      LastName,
+      GenderId,
+      PhoneNumber,
+      CategoryId,
+      StationId,
+      DateOfBirth,
+    } = req.body;
+    const userId = (req as any).user?.userId || 1;
 
+    // Validate required fields
+    if (!IDNumber || !FirstName || !LastName || !DateOfBirth || !PhoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields',
+      });
+    }
+
+    // Check for duplicate IDNumber or Phone on OTHER clients
+    const dup = await pool.query(
+      `SELECT "Id" FROM "Clients"
+       WHERE ("IDNumber" = $1 OR "PhoneNumber" = $2)
+         AND "Id" <> $3 AND "Deleted" = false
+       LIMIT 1`,
+      [IDNumber, PhoneNumber, id]
+    );
+    if (dup.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Another client already has this ID Number or Phone Number',
+      });
+    }
+
+    const now = new Date();
+
+    const result = await pool.query(
+      `UPDATE "Clients"
+       SET "IDNumber" = $1, "FirstName" = $2, "LastName" = $3,
+           "GenderId" = $4, "PhoneNumber" = $5, "CategoryId" = $6,
+           "StationId" = $7, "DateOfBirth" = $8, "UpdatedOn" = $9
+       WHERE "Id" = $10 AND "Deleted" = false
+       RETURNING "Id"`,
+      [
+        IDNumber, FirstName, LastName, GenderId || 1, PhoneNumber,
+        CategoryId || 1, StationId || 1, DateOfBirth, now, id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
+    }
+
+    await auditLog(
+      userId,
+      'CLIENT_UPDATED',
+      'Clients',
+      id,
+      null,
+      { IDNumber, FirstName, LastName, PhoneNumber, DateOfBirth },
+      getClientIp(req),
+      getUserAgent(req)
+    );
+
+    res.json({ success: true, message: 'Client updated successfully', Id: result.rows[0].Id });
+  } catch (error) {
+    console.error('Error updating client:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// ==================== GET CLIENT TALLIES ====================
+export const getClientTallies = async (req: Request, res: Response) => {
+  try {
+    const pool = await poolPromise;
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `SELECT
+        t."Id", t."PostedOn", t."UpdatedOn", t."StationId",
+        s."Title" AS "StationTitle",
+        t."Age",
+        t."Weight", t."Height", t."BMIValue",
+        bmi."Title" AS "BMIInterpretation",
+        t."Waist", t."Hip", t."WHRatio",
+        t."Systolic", t."Diastolic",
+        bp."Title" AS "BPInterpretation",
+        t."BPRemarkId",
+        bpr."Title" AS "BPRemark",
+        t."RBSValue",
+        rbs."Title" AS "RBSInterpretation",
+        t."RBSRemarkId",
+        rbsr."Title" AS "RBSRemark",
+        COALESCE(
+          (SELECT json_agg(r."Title")
+           FROM "TallyReferrals" tr
+           JOIN "Referrals" r ON r."Id" = tr."ReferralId"
+           WHERE tr."TallyId" = t."Id"),
+          '[]'::json
+        ) AS "Referrals"
+      FROM "Tallies" t
+      LEFT JOIN "Stations" s ON t."StationId" = s."Id"
+      LEFT JOIN "BMIINTValues" bmi ON t."BMIINTValueId" = bmi."Id"
+      LEFT JOIN "BPINTValues" bp ON t."BPINTValueId" = bp."Id"
+      LEFT JOIN "RBSINTValues" rbs ON t."RBSINTValueId" = rbs."Id"
+      LEFT JOIN "BPRemarks" bpr ON t."BPRemarkId" = bpr."Id"
+      LEFT JOIN "RBSRemarks" rbsr ON t."RBSRemarkId" = rbsr."Id"
+      WHERE t."ClientId" = $1 AND t."Deleted" = false
+      ORDER BY t."PostedOn" DESC`,
+      [id]
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('Error fetching client tallies:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// ==================== DELETE FUNCTIONS (Soft Delete) ====================
 // Soft delete field findings
 export const deleteFieldFindings = async (req: Request, res: Response) => {
   try {

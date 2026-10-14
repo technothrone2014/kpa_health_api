@@ -1,18 +1,10 @@
 import express from 'express';
 import { 
-  registerClient,
-  searchClients,
-  getClientById,
-  checkFieldFindings,
-  saveFieldFindings,
-  saveLabFindings,
-  saveOncologyFindings,
-  updateFieldFindings,
-  updateLabFindings,
-  updateOncologyFindings,
-  deleteFieldFindings,
-  getLookupValues,
-  interpretLookupValue
+  registerClient, searchClients, getClientById, checkFieldFindings,
+  saveFieldFindings, saveLabFindings, saveOncologyFindings,
+  updateFieldFindings, updateLabFindings, updateOncologyFindings,
+  deleteFieldFindings, getLookupValues, interpretLookupValue,
+  updateClient, getClientTallies
 } from '../controllers/dataCaptureController';
 import { authMiddleware } from '../middleware/authMiddleware';
 
@@ -32,6 +24,8 @@ router.post('/clients/register', registerClient);
 router.get('/clients/search', searchClients);
 router.get('/clients/:id', getClientById);
 router.get('/clients/:id/has-field-findings', checkFieldFindings);
+router.put('/clients/:id', updateClient);
+router.get('/clients/:id/tallies', getClientTallies);
 
 // Field findings (Tallies)
 router.post('/tallies', saveFieldFindings);
