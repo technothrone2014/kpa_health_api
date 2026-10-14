@@ -26,11 +26,20 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
 
 export const adminMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   const user = (req as any).user;
-  
-  if (!user || !user.roles?.includes('Admin')) {
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const roles = (user.roles || []).map((r: string) => String(r).toLowerCase());
+  const isAdmin = roles.some((r: string) =>
+    r === 'administrator' || r === 'admin'
+  );
+
+  if (!isAdmin) {
     return res.status(403).json({ success: false, message: 'Admin access required' });
   }
-  
+
   next();
 };
 

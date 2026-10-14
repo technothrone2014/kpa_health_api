@@ -1,16 +1,32 @@
 // routes/users.ts
 import express from "express";
-import { getUsers, getFieldAgents, getUserById } from "../controllers/usersController";
+import {
+  getUsers,
+  getFieldAgents,
+  getUserById,
+  getUserWithRoles,
+  createUser,
+  updateUser,
+  toggleUserStatus,
+  getAllRoles,
+} from "../controllers/usersController";
+import { authMiddleware, adminMiddleware } from "../middleware/authMiddleware";
 
 const router = express.Router();
 
-// GET /api/v1/users - Get all users (optionally filter by role)
+// All routes require auth
+router.use(authMiddleware);
+
+// Read-only endpoints (available to any authenticated staff)
 router.get("/", getUsers);
-
-// GET /api/v1/users/field-agents - Get field agents only
 router.get("/field-agents", getFieldAgents);
-
-// GET /api/v1/users/:id - Get user by ID
 router.get("/:id", getUserById);
+
+// Admin-only endpoints
+router.get("/roles/all", getAllRoles);
+router.get("/:id/details", getUserWithRoles);
+router.post("/", adminMiddleware, createUser);
+router.put("/:id", adminMiddleware, updateUser);
+router.patch("/:id/status", adminMiddleware, toggleUserStatus);
 
 export default router;
