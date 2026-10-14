@@ -775,37 +775,88 @@ export const updateLabFindings = async (req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
     const { id } = req.params;
-    const updates = req.body;
     const userId = (req as any).user?.userId || 1;
     const now = new Date();
 
-    const setClauses: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
+    // Whitelist — lab tech can only touch clinical values, never FKs to user/client
+    const EDITABLE = new Set([
+      'FBSValue', 'HBA1CValue', 'LipidId',
+      'MicroalbuminValue', 'BMDValue', 'PSAValue',
+      'HepatitisBValueId', 'HepatitisCValueId',
+    ]);
 
-    for (const [key, value] of Object.entries(updates)) {
-      if (key !== 'Id' && key !== 'ClientId') {
-        setClauses.push(`"${key}" = $${paramIndex++}`);
-        values.push(value);
-      }
+    const body: Record<string, any> = {};
+    for (const [k, v] of Object.entries(req.body)) {
+      if (EDITABLE.has(k)) body[k] = v;
     }
 
-    setClauses.push(`"UpdatedOn" = $${paramIndex++}`);
-    values.push(now);
-    values.push(id);
-
-    const query = `
-      UPDATE "Findings" 
-      SET ${setClauses.join(', ')}
-      WHERE "Id" = $${paramIndex} AND "Deleted" = false
-      RETURNING "Id"
-    `;
-
-    const result = await pool.query(query, values);
-
-    if (result.rows.length === 0) {
+    const current = await pool.query(
+      `SELECT * FROM "Findings" WHERE "Id" = $1 AND "Deleted" = false`,
+      [id]
+    );
+    if (current.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Lab findings not found' });
     }
+    const cur = current.rows[0];
+
+    const num = (v: any, fallback: number) => {
+      if (v === undefined || v === null || v === '') return fallback;
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    const toFk = (v: any, fallback: number | null): number | null => {
+      if (v === undefined) return fallback;
+      if (v === null || v === '') return null;
+      const n = parseInt(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+
+    const FBSValue           = num(body.FBSValue,           Number(cur.FBSValue)           || 0);
+    const HBA1CValue         = num(body.HBA1CValue,         Number(cur.HBA1CValue)         || 0);
+    const MicroalbuminValue  = num(body.MicroalbuminValue,  Number(cur.MicroalbuminValue)  || 0);
+    const BMDValue           = num(body.BMDValue,           Number(cur.BMDValue)           || 0);
+    const PSAValue           = num(body.PSAValue,           Number(cur.PSAValue)           || 0);
+    const LipidId            = toFk(body.LipidId,            cur.LipidId);
+    const HepatitisBValueId  = toFk(body.HepatitisBValueId,  cur.HepatitisBValueId);
+    const HepatitisCValueId  = toFk(body.HepatitisCValueId,  cur.HepatitisCValueId);
+
+    // Recompute interpretations server-side — single source of truth
+    const [fbsHit, hba1cHit, microalbuminHit, psaHit, bmdHit] = await Promise.all([
+      interpretValue(pool, 'fbs',          FBSValue),
+      interpretValue(pool, 'hba1c',        HBA1CValue),
+      interpretValue(pool, 'microalbumin', MicroalbuminValue),
+      interpretValue(pool, 'psa',          PSAValue),
+      interpretValue(pool, 'bmd',          BMDValue, { allowNegative: true }),
+    ]);
+
+    const FBSINTValueId          = fbsHit?.Id          ?? null;
+    const HBA1CINTValueId        = hba1cHit?.Id        ?? null;
+    const MicroalbuminINTValueId = microalbuminHit?.Id ?? null;
+    const PSAINTValueId          = psaHit?.Id          ?? null;
+    const BMDINTValueId          = bmdHit?.Id          ?? null;
+
+    await pool.query(
+      `UPDATE "Findings" SET
+        "FBSValue" = $1,           "FBSINTValueId" = $2,
+        "HBA1CValue" = $3,         "HBA1CINTValueId" = $4,
+        "LipidId" = $5,
+        "MicroalbuminValue" = $6,  "MicroalbuminINTValueId" = $7,
+        "BMDValue" = $8,           "BMDINTValueId" = $9,
+        "PSAValue" = $10,          "PSAINTValueId" = $11,
+        "HepatitisBValueId" = $12, "HepatitisCValueId" = $13,
+        "UpdatedOn" = $14
+       WHERE "Id" = $15`,
+      [
+        FBSValue, FBSINTValueId,
+        HBA1CValue, HBA1CINTValueId,
+        LipidId,
+        MicroalbuminValue, MicroalbuminINTValueId,
+        BMDValue, BMDINTValueId,
+        PSAValue, PSAINTValueId,
+        HepatitisBValueId, HepatitisCValueId,
+        now, id,
+      ]
+    );
 
     await auditLog(
       userId,
@@ -813,16 +864,12 @@ export const updateLabFindings = async (req: Request, res: Response) => {
       'Findings',
       id,
       null,
-      updates,
+      { ...body, recomputed: { FBSINTValueId, HBA1CINTValueId, MicroalbuminINTValueId, PSAINTValueId, BMDINTValueId } },
       getClientIp(req),
       getUserAgent(req)
     );
 
-    res.json({
-      success: true,
-      message: 'Lab findings updated successfully',
-      Id: result.rows[0].Id
-    });
+    res.json({ success: true, message: 'Lab findings updated', Id: id });
   } catch (error) {
     console.error('Error updating lab findings:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -1009,6 +1056,48 @@ export const getClientTallies = async (req: Request, res: Response) => {
     res.json({ success: true, data: result.rows });
   } catch (error) {
     console.error('Error fetching client tallies:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// ==================== GET CLIENT FINDINGS ====================
+export const getClientFindings = async (req: Request, res: Response) => {
+  try {
+    const pool = await poolPromise;
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `SELECT
+        f."Id", f."PostedOn", f."UpdatedOn", f."StationId",
+        s."Title" AS "StationTitle",
+
+        f."FBSValue",           fbs."Title"   AS "FBSInterpretation",
+        f."HBA1CValue",         hba."Title"   AS "HBA1CInterpretation",
+        f."LipidId",            lip."Title"   AS "LipidTitle",
+        f."MicroalbuminValue",  ma."Title"    AS "MicroalbuminInterpretation",
+        f."BMDValue",           bmd."Title"   AS "BMDInterpretation",
+        f."PSAValue",           psa."Title"   AS "PSAInterpretation",
+
+        f."HepatitisBValueId",  hbv."Title"   AS "HepatitisBTitle",
+        f."HepatitisCValueId",  hcv."Title"   AS "HepatitisCTitle"
+      FROM "Findings" f
+      LEFT JOIN "Stations"                s   ON f."StationId"            = s."Id"
+      LEFT JOIN "FBSINTValues"            fbs ON f."FBSINTValueId"        = fbs."Id"
+      LEFT JOIN "HBA1CINTValues"          hba ON f."HBA1CINTValueId"      = hba."Id"
+      LEFT JOIN "Lipids"                  lip ON f."LipidId"              = lip."Id"
+      LEFT JOIN "MicroalbuminINTValues"   ma  ON f."MicroalbuminINTValueId" = ma."Id"
+      LEFT JOIN "BMDINTValues"            bmd ON f."BMDINTValueId"        = bmd."Id"
+      LEFT JOIN "PSAINTValues"            psa ON f."PSAINTValueId"        = psa."Id"
+      LEFT JOIN "HepatitisBValues"        hbv ON f."HepatitisBValueId"    = hbv."Id"
+      LEFT JOIN "HepatitisCValues"        hcv ON f."HepatitisCValueId"    = hcv."Id"
+      WHERE f."ClientId" = $1 AND f."Deleted" = false
+      ORDER BY f."PostedOn" DESC`,
+      [id]
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('Error fetching client findings:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
