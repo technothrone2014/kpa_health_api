@@ -4,7 +4,8 @@ import {
   saveFieldFindings, saveLabFindings, saveOncologyFindings,
   updateFieldFindings, updateLabFindings, updateOncologyFindings,
   deleteFieldFindings, getLookupValues, interpretLookupValue,
-  updateClient, getClientTallies, getClientFindings
+  updateClient, getClientTallies, getClientFindings,
+  getClientOncologies
 } from '../controllers/dataCaptureController';
 import { authMiddleware } from '../middleware/authMiddleware';
 
@@ -27,6 +28,7 @@ router.get('/clients/:id/has-field-findings', checkFieldFindings);
 router.put('/clients/:id', updateClient);
 router.get('/clients/:id/tallies', getClientTallies);
 router.get('/clients/:id/findings', getClientFindings);
+router.get('/clients/:id/oncologies', getClientOncologies);
 
 // Field findings (Tallies)
 router.post('/tallies', saveFieldFindings);

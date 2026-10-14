@@ -881,37 +881,55 @@ export const updateOncologyFindings = async (req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
     const { id } = req.params;
-    const updates = req.body;
     const userId = (req as any).user?.userId || 1;
     const now = new Date();
 
-    const setClauses: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
+    // Whitelist — the only fields the technician can touch
+    const EDITABLE = new Set(['BreastExamId', 'PAPSmearId', 'ViaVilliId']);
 
-    for (const [key, value] of Object.entries(updates)) {
-      if (key !== 'Id' && key !== 'ClientId') {
-        setClauses.push(`"${key}" = $${paramIndex++}`);
-        values.push(value);
-      }
+    const toFk = (v: any): number | null => {
+      if (v === null || v === undefined || v === '') return null;
+      const n = parseInt(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+
+    const body: Record<string, any> = {};
+    for (const [k, v] of Object.entries(req.body)) {
+      if (EDITABLE.has(k)) body[k] = toFk(v);
     }
 
-    setClauses.push(`"UpdatedOn" = $${paramIndex++}`);
-    values.push(now);
-    values.push(id);
+    // Require at least one valid value so we don't create an "all not performed" row by accident
+    const hasAnyValue = Object.values(body).some((v) => v !== null);
+    if (!hasAnyValue) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one screening must be recorded.',
+      });
+    }
 
-    const query = `
-      UPDATE "Oncologies" 
-      SET ${setClauses.join(', ')}
-      WHERE "Id" = $${paramIndex} AND "Deleted" = false
-      RETURNING "Id"
-    `;
-
-    const result = await pool.query(query, values);
-
-    if (result.rows.length === 0) {
+    const current = await pool.query(
+      `SELECT * FROM "Oncologies" WHERE "Id" = $1 AND "Deleted" = false`,
+      [id]
+    );
+    if (current.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Oncology findings not found' });
     }
+    const cur = current.rows[0];
+
+    // Merge — fields not supplied in the body keep their existing values
+    const BreastExamId = body.BreastExamId !== undefined ? body.BreastExamId : cur.BreastExamId;
+    const PAPSmearId   = body.PAPSmearId   !== undefined ? body.PAPSmearId   : cur.PAPSmearId;
+    const ViaVilliId   = body.ViaVilliId   !== undefined ? body.ViaVilliId   : cur.ViaVilliId;
+
+    await pool.query(
+      `UPDATE "Oncologies" SET
+         "BreastExamId" = $1,
+         "PAPSmearId"   = $2,
+         "ViaVilliId"   = $3,
+         "UpdatedOn"    = $4
+       WHERE "Id" = $5`,
+      [BreastExamId, PAPSmearId, ViaVilliId, now, id]
+    );
 
     await auditLog(
       userId,
@@ -919,16 +937,12 @@ export const updateOncologyFindings = async (req: Request, res: Response) => {
       'Oncologies',
       id,
       null,
-      updates,
+      { BreastExamId, PAPSmearId, ViaVilliId },
       getClientIp(req),
       getUserAgent(req)
     );
 
-    res.json({
-      success: true,
-      message: 'Oncology findings updated successfully',
-      Id: result.rows[0].Id
-    });
+    res.json({ success: true, message: 'Oncology findings updated', Id: id });
   } catch (error) {
     console.error('Error updating oncology findings:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -1205,6 +1219,37 @@ export const getClientFindings = async (req: Request, res: Response) => {
     res.json({ success: true, data: result.rows });
   } catch (error) {
     console.error('Error fetching client findings:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// ==================== GET CLIENT ONCOLOGIES ====================
+export const getClientOncologies = async (req: Request, res: Response) => {
+  try {
+    const pool = await poolPromise;
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `SELECT
+        o."Id", o."PostedOn", o."UpdatedOn", o."StationId",
+        s."Title" AS "StationTitle",
+
+        o."BreastExamId", be."Title" AS "BreastExamTitle",
+        o."PAPSmearId",   ps."Title" AS "PAPSmearTitle",
+        o."ViaVilliId",   vv."Title" AS "ViaVilliTitle"
+      FROM "Oncologies" o
+      LEFT JOIN "Stations"     s  ON o."StationId"   = s."Id"
+      LEFT JOIN "BreastExams"  be ON o."BreastExamId" = be."Id"
+      LEFT JOIN "PAPSmears"    ps ON o."PAPSmearId"   = ps."Id"
+      LEFT JOIN "ViaVillies"   vv ON o."ViaVilliId"   = vv."Id"
+      WHERE o."ClientId" = $1 AND o."Deleted" = false
+      ORDER BY o."PostedOn" DESC`,
+      [id]
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('Error fetching client oncologies:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
