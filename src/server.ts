@@ -113,6 +113,8 @@ app.get("/", (_req: Request, res: Response) => {
 // ✅ ALL API ROUTES
 // ============================================
 
+app.use('/api/v1/whatsapp', whatsappRouter);
+
 // Auth routes
 app.use("/api/v1/auth", authRouter);
 
@@ -139,8 +141,6 @@ app.get('/api/v1/email/test', async (_req, res) => {
   const result = await testEmailConnection();
   res.json(result);
 });
-
-app.use('/api/v1/whatsapp', whatsappRouter);
 
 // Test route for deployment verification
 app.get("/api/test", (_req: Request, res: Response) => {
