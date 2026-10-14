@@ -1,22 +1,26 @@
-// server.ts - API ONLY (For separate backend/frontend deployments)
-
+// server.ts
 import dotenv from "dotenv";
 dotenv.config();
 
 import express, { Request, Response, NextFunction } from "express";
-import cors from "cors";
-import helmet from "helmet";
 import compression from "compression";
-import employeesRouter from "./routes/employees";
-import dataCorrectionRoutes from "./routes/dataCorrection";
-import analyticsRouter from "./routes/analytics";
-import patientsRouter from './routes/patients';
-import authRouter from './routes/auth.js';
+import helmet from "helmet";
+import cors from "cors";
+
+import { testEmailConnection } from './services/emailService.js';
+import { initWhatsApp } from './services/whatsappService.js';
+
 import { errorHandler } from "./middleware/errorHandler";
 import logger from "./utils/logger";
-import { testEmailConnection } from './services/emailService.js';
+
+import dataCorrectionRoutes from "./routes/dataCorrection";
 import dataCaptureRouter from './routes/dataCapture';
+import employeesRouter from "./routes/employees";
+import analyticsRouter from "./routes/analytics";
+import whatsappRouter from './routes/whatsapp.js';
+import patientsRouter from './routes/patients';
 import usersRoutes from "./routes/users";
+import authRouter from './routes/auth.js';
 
 const app = express();
 
@@ -136,6 +140,8 @@ app.get('/api/v1/email/test', async (_req, res) => {
   res.json(result);
 });
 
+app.use('/api/v1/whatsapp', whatsappRouter);
+
 // Test route for deployment verification
 app.get("/api/test", (_req: Request, res: Response) => {
   res.json({
@@ -192,6 +198,11 @@ app.listen(PORT, '0.0.0.0', () => {
   logger.info(`   - Data Correction: /api/data-correction`);
   logger.info(`   - Users: /api/v1/users`);
   logger.info(`   - Email: /api/v1/email`);
+});
+
+initWhatsApp().catch((err) => {
+  console.error('WhatsApp init failed:', err.message);
+  console.warn('Email OTP will still work as fallback.');
 });
 
 export default app;

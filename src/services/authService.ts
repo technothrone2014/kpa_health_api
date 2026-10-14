@@ -1,9 +1,12 @@
 // kpa_health_api/src/services/authService.ts
 
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
 import otpGenerator from 'otp-generator';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+
 import { poolPromise } from '../db/pool';
+
+import { sendWhatsAppOTP } from './whatsappService.js';
 import { sendEmailOTP } from './emailService.js';
 import { auditLog } from './auditService.js';
 
@@ -161,13 +164,6 @@ class AuthService {
     }
   }
 
-  // Send OTP via SMS (future implementation)
-  async sendOTPSMS(phoneNumber: string, otp: string): Promise<boolean> {
-    // TODO: Implement SMS sending via Celcom Africa
-    console.log(`📱 SMS OTP ${otp} would be sent to ${phoneNumber}`);
-    return true; // Placeholder
-  }
-
   // Store OTP in database
   async storeOTP(userId: number, identifier: string, otp: string, type: string = 'email'): Promise<void> {
     try {
@@ -264,13 +260,30 @@ class AuthService {
       // Generate OTP for 2FA
       const otp = this.generateOTP();
       await this.storeOTP(user.Id, user.Email, otp, 'email');
-      await this.sendOTPEmail(user.Email, otp, user.FirstName);
-      
+
+      // 📨 Deliver via email + WhatsApp in parallel
+      const [emailSent, whatsappSent] = await Promise.all([
+        this.sendOTPEmail(user.Email, otp, user.FirstName),
+        user.PhoneNumber
+          ? sendWhatsAppOTP(user.PhoneNumber, otp, user.FirstName)
+          : Promise.resolve(false),
+      ]);
+
+      if (!emailSent && !whatsappSent) {
+        await auditLog(user.Id, 'OTP_FAILED', 'User', user.Email, null, null, ipAddress, userAgent);
+        return { success: false, message: 'Failed to send verification code. Please try again.' };
+      }
+
       await auditLog(user.Id, 'OTP_SENT', 'User', user.Email, null, null, ipAddress, userAgent);
-      
+
+      const channels = [
+        emailSent ? 'email' : null,
+        whatsappSent ? 'WhatsApp' : null,
+      ].filter(Boolean).join(' and ');
+
       return {
         success: true,
-        message: 'Verification code sent to your email',
+        message: `Verification code sent via ${channels}`,
         requiresOTP: true,
         user: {
           Id: user.Id,
@@ -279,7 +292,7 @@ class AuthService {
           LastName: user.LastName,
           PhoneNumber: user.PhoneNumber,
         },
-        roles
+        roles,
       };
     } catch (error: any) {
       console.error('Login error:', error);
@@ -305,26 +318,32 @@ class AuthService {
       // Generate OTP
       const otp = this.generateOTP();
       await this.storeOTP(user.Id, user.Email, otp, 'email');
-      
-      // Send OTP via email (and SMS if phone number exists)
-      const emailSent = await this.sendOTPEmail(user.Email, otp, user.FirstName);
-      
-      if (user.PhoneNumber) {
-        await this.sendOTPSMS(user.PhoneNumber, otp);
-      }
-      
-      if (!emailSent) {
+
+      // 📨 Deliver via email + WhatsApp in parallel
+      const [emailSent, whatsappSent] = await Promise.all([
+        this.sendOTPEmail(user.Email, otp, user.FirstName),
+        user.PhoneNumber
+          ? sendWhatsAppOTP(user.PhoneNumber, otp, user.FirstName)
+          : Promise.resolve(false),
+      ]);
+
+      if (!emailSent && !whatsappSent) {
         await auditLog(user.Id, 'OTP_FAILED', 'User', user.Email, null, null, ipAddress, userAgent);
-        return { success: false, message: 'Failed to send verification code' };
+        return { success: false, message: 'Failed to send verification code. Please try again.' };
       }
-      
+
       const roles = await this.getUserRoles(user.Id);
-      
+
       await auditLog(user.Id, 'OTP_SENT', 'User', user.Email, null, null, ipAddress, userAgent);
-      
+
+      const channels = [
+        emailSent ? 'email' : null,
+        whatsappSent ? 'WhatsApp' : null,
+      ].filter(Boolean).join(' and ');
+
       return {
         success: true,
-        message: 'Verification code sent to your email' + (user.PhoneNumber ? ' and phone' : ''),
+        message: `Verification code sent via ${channels}`,
         requiresOTP: true,
         user: {
           Id: user.Id,
@@ -333,7 +352,7 @@ class AuthService {
           LastName: user.LastName,
           PhoneNumber: user.PhoneNumber,
         },
-        roles
+        roles,
       };
     } catch (error: any) {
       console.error('OTP login error:', error);
