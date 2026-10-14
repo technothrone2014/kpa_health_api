@@ -960,21 +960,94 @@ export const updateClient = async (req: Request, res: Response) => {
       });
     }
 
-    // Check for duplicate IDNumber or Phone on OTHER clients
-    const dup = await pool.query(
-      `SELECT "Id" FROM "Clients"
-       WHERE ("IDNumber" = $1 OR "PhoneNumber" = $2)
-         AND "Id" <> $3 AND "Deleted" = false
-       LIMIT 1`,
-      [IDNumber, PhoneNumber, id]
+    // 1) Fetch the current row so we can tell what the user is actually changing
+    const current = await pool.query(
+      `SELECT "IDNumber", "PhoneNumber"
+       FROM "Clients"
+       WHERE "Id" = $1 AND "Deleted" = false`,
+      [id]
     );
-    if (dup.rows.length > 0) {
-      return res.status(409).json({
-        success: false,
-        message: 'Another client already has this ID Number or Phone Number',
-      });
+
+    if (current.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Client not found' });
     }
 
+    const cur = current.rows[0];
+
+    const idChanged =
+      String(cur.IDNumber ?? '').trim().toLowerCase() !==
+      String(IDNumber).trim().toLowerCase();
+
+    const phoneChanged =
+      String(cur.PhoneNumber ?? '').trim() !==
+      String(PhoneNumber).trim();
+
+    // 2) Only run the conflict check on fields the user is ACTUALLY changing
+    if (idChanged || phoneChanged) {
+      const conditions: string[] = [];
+      const params: any[] = [];
+
+      if (idChanged) {
+        params.push(IDNumber);
+        conditions.push(
+          `LOWER(TRIM("IDNumber")) = LOWER(TRIM($${params.length}))`
+        );
+      }
+      if (phoneChanged) {
+        params.push(PhoneNumber);
+        conditions.push(
+          `TRIM("PhoneNumber") = TRIM($${params.length})`
+        );
+      }
+      params.push(id); // $N — exclude self
+
+      const dup = await pool.query(
+        `SELECT "Id", "FullName", "IDNumber", "PhoneNumber"
+         FROM "Clients"
+         WHERE (${conditions.join(' OR ')})
+           AND "Id" <> $${params.length}
+           AND "Deleted" = false
+         LIMIT 1`,
+        params
+      );
+
+      if (dup.rows.length > 0) {
+        const conflict = dup.rows[0];
+
+        // Tell the user which field(s) collided and with whom
+        const clashing: string[] = [];
+        if (
+          idChanged &&
+          String(conflict.IDNumber ?? '').trim().toLowerCase() ===
+            String(IDNumber).trim().toLowerCase()
+        ) {
+          clashing.push(`ID Number "${IDNumber}"`);
+        }
+        if (
+          phoneChanged &&
+          String(conflict.PhoneNumber ?? '').trim() ===
+            String(PhoneNumber).trim()
+        ) {
+          clashing.push(`Phone Number "${PhoneNumber}"`);
+        }
+
+        return res.status(409).json({
+          success: false,
+          message:
+            `Another client — ${conflict.FullName} (#${conflict.Id}) — ` +
+            `already uses ${clashing.join(' and ')}. ` +
+            `Please choose a different value before saving.`,
+          conflict: {
+            Id: conflict.Id,
+            FullName: conflict.FullName,
+            IDNumber: conflict.IDNumber,
+            PhoneNumber: conflict.PhoneNumber,
+          },
+        });
+      }
+    }
+
+    // 3) Proceed with the update — the user isn't introducing a new conflict
     const now = new Date();
 
     const result = await pool.query(
@@ -1005,8 +1078,42 @@ export const updateClient = async (req: Request, res: Response) => {
       getUserAgent(req)
     );
 
-    res.json({ success: true, message: 'Client updated successfully', Id: result.rows[0].Id });
-  } catch (error) {
+    res.json({
+      success: true,
+      message: 'Client updated successfully',
+      Id: result.rows[0].Id,
+    });
+  } catch (error: any) {
+    // Postgres unique-violation — the DB is the last line of defense
+    if (error?.code === '23505') {
+      const constraint: string = error?.constraint || '';
+      const detail: string = error?.detail || '';
+
+      // Try to extract the actual offending column from the constraint name
+      // (works for auto-generated names like "Clients_IDNumber_key" and
+      //  for functional indexes with distinctive names)
+      const field =
+        /IDNumber/i.test(constraint) || /IDNumber/i.test(detail)
+          ? 'ID Number'
+          : /PhoneNumber/i.test(constraint) || /PhoneNumber/i.test(detail)
+            ? 'Phone Number'
+            : 'ID Number or Phone Number';
+
+      // Try to pull the conflicting value out of the detail string
+      const valueMatch = detail.match(/=\(([^)]+)\)/);
+      const value = valueMatch ? valueMatch[1] : null;
+
+      return res.status(409).json({
+        success: false,
+        message:
+          value
+            ? `A client with this ${field} ("${value}") already exists. ` +
+              `If this is a legacy duplicate, keep a distinguishing suffix (e.g. "p").`
+            : `A client with this ${field} already exists.`,
+        constraint,
+        detail,
+      });
+    }
     console.error('Error updating client:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
