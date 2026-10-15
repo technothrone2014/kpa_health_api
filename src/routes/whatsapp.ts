@@ -64,9 +64,13 @@ router.post('/reconnect', async (_req, res) => {
 
 // POST /api/v1/whatsapp/reset — wipe session (dev only)
 router.post('/reset', async (_req, res) => {
-  await resetWhatsAppSession();
-  await initWhatsApp();
-  res.json({ success: true, message: 'Session reset — new QR incoming' });
+  try {
+    await resetWhatsAppSession();
+    await initWhatsApp();
+    res.json({ success: true, message: 'Session reset — new QR incoming' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 export default router;

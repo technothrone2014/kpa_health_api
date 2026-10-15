@@ -1,7 +1,6 @@
 // kpa_health_api/src/services/whatsappService.ts
 
-import { Boom } from '@hapi/boom';
-import qrcode from 'qrcode-terminal';
+import QRCode from 'qrcode';
 import pino from 'pino';
 import path from 'path';
 import fs from 'fs';
@@ -14,10 +13,14 @@ const SESSION_DIR = path.resolve(process.cwd(), '.whatsapp-session');
 const logger = pino({ level: 'warn' });
 
 let sock: any = null;
+let initializing: Promise<void> | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let isConnected = false;
 let connectionStatus: 'connecting' | 'open' | 'close' | 'logged_out' = 'close';
 let lastQrDataUrl: string | null = null;
 let lastQrGeneratedAt: number | null = null;
+let qrGeneration = 0;
+let isResetting = false;
 
 // ---------------------------------------------------------------
 // Phone → WhatsApp JID normalizer (Kenyan default)
@@ -33,71 +36,104 @@ const toWhatsAppJid = (phone: string): string => {
 // Initialize the Baileys socket (non-blocking)
 // ---------------------------------------------------------------
 export const initWhatsApp = async (): Promise<void> => {
-  if (sock && isConnected) {
-    console.log('✅ WhatsApp already connected');
+  if (isConnected || sock || initializing) {
     return;
   }
 
-  // 🔑 Dynamic import — works from CommonJS, resolves ESM at runtime
-  if (!makeWASocket) {
-    const baileys = await import('@whiskeysockets/baileys');
-    makeWASocket = baileys.default;
-    DisconnectReason = baileys.DisconnectReason;
-    useMultiFileAuthState = baileys.useMultiFileAuthState;
-    console.log('✅ Baileys ESM module loaded dynamically');
-  }
+  initializing = (async () => {
+    connectionStatus = 'connecting';
+    lastQrDataUrl = null;
+    lastQrGeneratedAt = null;
 
-  if (!fs.existsSync(SESSION_DIR)) {
-    fs.mkdirSync(SESSION_DIR, { recursive: true });
-  }
-
-  const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
-
-  sock = makeWASocket({
-    auth: state,
-    logger,
-    printQRInTerminal: false,
-  });
-
-  sock!.ev.on('creds.update', saveCreds);
-
-  sock!.ev.on('connection.update', (update: any) => {
-    const { connection, lastDisconnect, qr } = update;
-
-    if (qr) {
-      console.log('\n📱 Scan this QR code with your WhatsApp sender account:\n');
-      qrcode.generate(qr, { small: true });
-    }
-
-    if (connection === 'open') {
-      isConnected = true;
-      console.log('✅ WhatsApp sender connected');
-    }
-
-    if (connection === 'close') {
-      isConnected = false;
-      const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason?.loggedOut;
-      console.warn(`⚠️ WhatsApp connection closed (code ${statusCode}). Reconnect: ${shouldReconnect}`);
-      if (shouldReconnect) {
-        setTimeout(() => initWhatsApp(), 5000);
-      } else {
-        console.error('❌ WhatsApp logged out. Delete .whatsapp-session and re-scan.');
+    try {
+      if (!makeWASocket) {
+        const baileys = await import('@whiskeysockets/baileys');
+        makeWASocket = baileys.default;
+        DisconnectReason = baileys.DisconnectReason;
+        useMultiFileAuthState = baileys.useMultiFileAuthState;
       }
-    }
-  });
 
-  // Wait until connection is open (with timeout)
-  await new Promise<void>((resolve, reject) => {
-    const started = Date.now();
-    const check = setInterval(() => {
-      if (isConnected) { clearInterval(check); resolve(); }
-      if (Date.now() - started > 60_000) {
-        clearInterval(check);
-        reject(new Error('WhatsApp connection timed out — did you scan the QR?'));
+      if (!fs.existsSync(SESSION_DIR)) {
+        fs.mkdirSync(SESSION_DIR, { recursive: true });
       }
-    }, 500);
-  });
+
+      const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
+      const socket = makeWASocket({
+        auth: state,
+        logger,
+        printQRInTerminal: false,
+      });
+
+      sock = socket;
+      socket.ev.on('creds.update', saveCreds);
+      socket.ev.on('connection.update', (update: any) => {
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+          const generation = ++qrGeneration;
+          void QRCode.toDataURL(qr)
+            .then((dataUrl) => {
+              if (
+                sock === socket &&
+                connectionStatus === 'connecting' &&
+                generation === qrGeneration
+              ) {
+                lastQrDataUrl = dataUrl;
+                lastQrGeneratedAt = Date.now();
+              }
+            })
+            .catch((error: unknown) => {
+              logger.error({ err: error }, 'Failed to generate WhatsApp QR code');
+            });
+        }
+
+        if (connection === 'connecting') {
+          connectionStatus = 'connecting';
+        }
+
+        if (connection === 'open') {
+          qrGeneration++;
+          isConnected = true;
+          connectionStatus = 'open';
+          lastQrDataUrl = null;
+          lastQrGeneratedAt = null;
+          console.log('✅ WhatsApp sender connected');
+        }
+
+        if (connection === 'close') {
+          qrGeneration++;
+          isConnected = false;
+          lastQrDataUrl = null;
+          lastQrGeneratedAt = null;
+          const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
+          const loggedOut = statusCode === DisconnectReason?.loggedOut;
+          connectionStatus = loggedOut ? 'logged_out' : 'close';
+          if (sock === socket) sock = null;
+          console.warn(`⚠️ WhatsApp connection closed (code ${statusCode}).`);
+
+          if (!loggedOut && !isResetting && !reconnectTimer) {
+            reconnectTimer = setTimeout(() => {
+              reconnectTimer = null;
+              void initWhatsApp().catch((error: unknown) => {
+                logger.error({ err: error }, 'WhatsApp reconnect failed');
+              });
+            }, 5000);
+          } else if (loggedOut) {
+            console.error('❌ WhatsApp logged out. Reset the session and scan a new QR.');
+          }
+        }
+      });
+    } catch (error) {
+      connectionStatus = 'close';
+      throw error;
+    }
+  })();
+
+  try {
+    await initializing;
+  } finally {
+    initializing = null;
+  }
 };
 
 // ---------------------------------------------------------------
@@ -148,9 +184,22 @@ export const getLatestQrDataUrl = (): string | null => lastQrDataUrl;
 // Manual reset (useful during dev when session gets stuck)
 // ---------------------------------------------------------------
 export const resetWhatsAppSession = async (): Promise<void> => {
+  isResetting = true;
   try {
+    if (initializing) {
+      await initializing;
+    }
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+
     if (sock) {
-      try { await sock.logout(); } catch { /* ignore */ }
+      try {
+        await sock.logout();
+      } catch (error) {
+        logger.warn({ err: error }, 'WhatsApp logout during session reset failed');
+      }
       sock = null;
     }
     if (fs.existsSync(SESSION_DIR)) {
@@ -160,7 +209,8 @@ export const resetWhatsAppSession = async (): Promise<void> => {
     connectionStatus = 'close';
     lastQrDataUrl = null;
     lastQrGeneratedAt = null;
-  } catch (err: any) {
-    console.error('Reset failed:', err.message);
+    qrGeneration++;
+  } finally {
+    isResetting = false;
   }
 };
