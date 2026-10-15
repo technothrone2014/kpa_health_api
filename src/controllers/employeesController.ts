@@ -2,12 +2,86 @@ import { Request, Response } from "express";
 import { poolPromise } from "../db/pool";
 
 /**
- * 🧩 GET all employees (clients)
+ * Get a filtered, paginated client directory; `all=true` is reserved for export.
  */
-export const getAllEmployees = async (_req: Request, res: Response) => {
+export const getAllEmployees = async (req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
-    const result = await pool.query(`
+    const asList = (value: unknown): string[] => {
+      if (Array.isArray(value)) return value.map(String).filter(Boolean);
+      if (typeof value === 'string' && value) return [value];
+      return [];
+    };
+
+    const conditions = ['c."Deleted" = false'];
+    const params: any[] = [];
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+
+    if (search) {
+      conditions.push(`(
+        c."FullName" ILIKE $${params.length + 1}
+        OR c."IDNumber" ILIKE $${params.length + 1}
+        OR s."Title" ILIKE $${params.length + 1}
+      )`);
+      params.push(`%${search}%`);
+    }
+
+    if (req.query.status === 'active') conditions.push('c."Status" = true');
+    if (req.query.status === 'inactive') conditions.push('c."Status" = false');
+
+    if (typeof req.query.startDate === 'string' && req.query.startDate) {
+      conditions.push(`c."PostedOn" >= $${params.length + 1}::date`);
+      params.push(req.query.startDate);
+    }
+    if (typeof req.query.endDate === 'string' && req.query.endDate) {
+      conditions.push(`c."PostedOn" < $${params.length + 1}::date + INTERVAL '1 day'`);
+      params.push(req.query.endDate);
+    }
+
+    const stations = asList(req.query.stations);
+    if (stations.length) {
+      conditions.push(`s."Title" = ANY($${params.length + 1}::text[])`);
+      params.push(stations);
+    }
+
+    const categories = asList(req.query.categories);
+    if (categories.length) {
+      conditions.push(`cat."Title" = ANY($${params.length + 1}::text[])`);
+      params.push(categories);
+    }
+
+    if (req.query.gender === 'male' || req.query.gender === 'female') {
+      conditions.push(`LOWER(g."Title") = $${params.length + 1}`);
+      params.push(req.query.gender);
+    }
+
+    const sortColumns: Record<string, string> = {
+      Id: 'c."Id"',
+      FullName: 'c."FullName"',
+      IDNumber: 'c."IDNumber"',
+      CategoryTitle: 'cat."Title"',
+      StationTitle: 's."Title"',
+    };
+    const requestedSort = typeof req.query.sortBy === 'string' ? req.query.sortBy : 'FullName';
+    const sortColumn = sortColumns[requestedSort] || sortColumns.FullName;
+    const sortDirection = req.query.sortDirection === 'desc' ? 'DESC' : 'ASC';
+    const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number.parseInt(String(req.query.pageSize || '10'), 10) || 10));
+    const exportAll = req.query.all === 'true';
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+    const countPromise = pool.query(`
+      SELECT COUNT(*)::int AS total
+      FROM "Clients" c
+      LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
+      LEFT JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+      ${whereClause}
+    `, params);
+
+    const limitClause = exportAll ? '' : `LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    const dataParams = exportAll ? params : [...params, pageSize, (page - 1) * pageSize];
+    const dataPromise = pool.query(`
       SELECT 
         c."Id",
         c."UserId",
@@ -31,10 +105,18 @@ export const getAllEmployees = async (_req: Request, res: Response) => {
       LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
       LEFT JOIN "Categories" cat ON c."CategoryId" = cat."Id"
       LEFT JOIN "Stations" s ON c."StationId" = s."Id"
-      WHERE c."Deleted" = false
-      ORDER BY c."Id" DESC;
-    `);
-    res.status(200).json(result.rows);
+      ${whereClause}
+      ORDER BY ${sortColumn} ${sortDirection}, c."Id" DESC
+      ${limitClause}
+    `, dataParams);
+
+    const [countResult, dataResult] = await Promise.all([countPromise, dataPromise]);
+    res.status(200).json({
+      data: dataResult.rows,
+      total: countResult.rows[0]?.total || 0,
+      page,
+      pageSize: exportAll ? dataResult.rows.length : pageSize,
+    });
   } catch (err) {
     console.error("Error fetching employees:", err);
     res.status(500).json({ message: "Error fetching employees", error: err });
