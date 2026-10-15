@@ -251,7 +251,7 @@ export const createConfigItem = async (req: Request, res: Response) => {
     let numStop: number | null = null;
     if (config.supportsRange) {
       const rv = await validateRange(pool, config.table, StartIndex, StopIndex);
-      if (!rv.ok) {
+      if (rv.ok === false) {
         return res.status(rv.status).json({ success: false, message: rv.message });
       }
       numStart = rv.start;
@@ -346,7 +346,7 @@ export const updateConfigItem = async (req: Request, res: Response) => {
     let numStop: number | null = null;
     if (config.supportsRange) {
       const rv = await validateRange(pool, config.table, StartIndex, StopIndex, id);
-      if (!rv.ok) {
+      if (rv.ok === false) {
         return res.status(rv.status).json({ success: false, message: rv.message });
       }
       numStart = rv.start;
