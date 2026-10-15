@@ -273,14 +273,157 @@ class IntelligentQueryService {
         }
         return conditions.length > 0 ? `AND ${conditions.join(' AND ')}` : '';
     }
+    // Return one row per performed test, retaining the source screening event.
+    async queryClinicalFindings(domain, query, filters) {
+        const pool = await pool_1.poolPromise;
+        const tests = domain === 'lab'
+            ? [
+                { key: 'FBS', label: 'FBS', pattern: /\bfbs\b|fasting blood sugar|fasting glucose/, fk: 'FBSINTValueId', value: 'FBSValue', lookup: 'FBSINTValues' },
+                { key: 'HbA1c', label: 'HbA1c', pattern: /hba1c|hb\s*a1c|glycated haemoglobin|glycated hemoglobin/, fk: 'HBA1CINTValueId', value: 'HBA1CValue', lookup: 'HBA1CINTValues' },
+                { key: 'Microalbumin', label: 'Microalbumin', pattern: /microalbumin/, fk: 'MicroalbuminINTValueId', value: 'MicroalbuminValue', lookup: 'MicroalbuminINTValues' },
+                { key: 'BMD', label: 'BMD', pattern: /\bbmd\b|bone mineral density/, fk: 'BMDINTValueId', value: 'BMDValue', lookup: 'BMDINTValues' },
+                { key: 'PSA', label: 'PSA', pattern: /\bpsa\b|prostate-specific antigen|prostate specific antigen/, fk: 'PSAINTValueId', value: 'PSAValue', lookup: 'PSAINTValues' },
+                { key: 'Lipids', label: 'Lipids', pattern: /lipid|cholesterol/, fk: 'LipidId', value: null, lookup: 'Lipids' },
+                { key: 'Hepatitis B', label: 'Hepatitis B', pattern: /hepatitis\s*b|\bhbv\b|hep\s*b/, fk: 'HepatitisBValueId', value: null, lookup: 'HepatitisBValues' },
+                { key: 'Hepatitis C', label: 'Hepatitis C', pattern: /hepatitis\s*c|\bhcv\b|hep\s*c/, fk: 'HepatitisCValueId', value: null, lookup: 'HepatitisCValues' },
+            ]
+            : [
+                { key: 'Breast Exam', label: 'Breast Exam', pattern: /breast|mammary/, fk: 'BreastExamId', value: null, lookup: 'BreastExams' },
+                { key: 'PAP Smear', label: 'PAP Smear', pattern: /pap\s*smear|pap test|cervical cytology/, fk: 'PAPSmearId', value: null, lookup: 'PAPSmears' },
+                { key: 'VIA Villi', label: 'VIA Villi', pattern: /via|villi|visual inspection/, fk: 'ViaVilliId', value: null, lookup: 'ViaVillies' },
+            ];
+        const normalizedQuery = query.toLowerCase();
+        let selectedTests = tests.filter(test => test.pattern.test(normalizedQuery));
+        if (domain === 'lab' && normalizedQuery.includes('hepatitis') && selectedTests.every(test => !test.key.startsWith('Hepatitis'))) {
+            selectedTests = tests.filter(test => test.key.startsWith('Hepatitis'));
+        }
+        if (selectedTests.length === 0)
+            selectedTests = tests;
+        const sourceTable = domain === 'lab' ? 'Findings' : 'Oncologies';
+        const eventAlias = domain === 'lab' ? 'f' : 'o';
+        const params = [];
+        const conditions = [
+            `${eventAlias}."Deleted" = false`,
+            `c."Deleted" = false`,
+            `${eventAlias}."PostedOn" IS NOT NULL`,
+        ];
+        if (filters?.startDate) {
+            conditions.push(`${eventAlias}."PostedOn" >= $${params.length + 1}::date`);
+            params.push(filters.startDate);
+        }
+        if (filters?.endDate) {
+            conditions.push(`${eventAlias}."PostedOn" < $${params.length + 1}::date + INTERVAL '1 day'`);
+            params.push(filters.endDate);
+        }
+        if (filters?.category && filters.category !== 'all') {
+            conditions.push(`cat."Title" = $${params.length + 1}`);
+            params.push(filters.category);
+        }
+        if (filters?.station && filters.station !== 'all') {
+            conditions.push(`s."Title" = $${params.length + 1}`);
+            params.push(filters.station);
+        }
+        if (filters?.gender && filters.gender !== 'all') {
+            conditions.push(`g."Title" ILIKE $${params.length + 1}`);
+            params.push(filters.gender);
+        }
+        const eventRows = selectedTests.map(test => {
+            const valueExpression = test.value
+                ? `e."${test.value}"::text`
+                : 'NULL::text';
+            const availability = test.value
+                ? `(e."${test.value}" IS NOT NULL OR e."${test.fk}" IS NOT NULL)`
+                : `e."${test.fk}" IS NOT NULL`;
+            return `
+        SELECT e."EventId", e."ClientId", e."ClientName", e."IDNumber",
+               e."Category", e."Station", e."Gender", e."PostedOn",
+               '${test.label}'::text AS "Test", ${valueExpression} AS "Value",
+               lookup."Title" AS "Result"
+        FROM source_events e
+        LEFT JOIN "${test.lookup}" lookup ON e."${test.fk}" = lookup."Id"
+        WHERE ${availability}
+      `;
+        }).join('\nUNION ALL\n');
+        const resultConditions = [];
+        const isAbnormalRequest = /\babnormal\b|\belevated\b|\bhigh\b/.test(normalizedQuery);
+        if (isAbnormalRequest) {
+            resultConditions.push(`"Result" IS NOT NULL AND UPPER(BTRIM("Result")) NOT IN ('NORMAL', 'NEGATIVE', 'NON-REACTIVE', 'NON REACTIVE', 'NOT DETECTED', 'N/A')`);
+        }
+        else if (/\bpositive\b|\breactive\b/.test(normalizedQuery)) {
+            resultConditions.push(`("Result" ILIKE '%positive%' OR "Result" ILIKE '%reactive%')`);
+        }
+        else if (/\bnegative\b|\bnon-reactive\b|\bnot detected\b/.test(normalizedQuery)) {
+            resultConditions.push(`("Result" ILIKE '%negative%' OR "Result" ILIKE '%non-reactive%' OR "Result" ILIKE '%not detected%')`);
+        }
+        else if (/\bnormal\b/.test(normalizedQuery)) {
+            resultConditions.push(`("Result" ILIKE '%normal%' OR "Result" ILIKE '%negative%' OR "Result" ILIKE '%not detected%')`);
+        }
+        const latestOnly = /\blatest\b|\bmost recent\b|\blast result\b/.test(normalizedQuery);
+        if (latestOnly)
+            resultConditions.push('"ClientTestRank" = 1');
+        const resultWhere = resultConditions.length ? `WHERE ${resultConditions.join(' AND ')}` : '';
+        const sql = `
+      WITH source_events AS (
+        SELECT ${eventAlias}."Id" AS "EventId", ${eventAlias}."ClientId",
+               c."FullName" AS "ClientName", c."IDNumber",
+               COALESCE(cat."Title", 'Unknown') AS "Category",
+               COALESCE(s."Title", 'Unknown') AS "Station",
+               COALESCE(g."Title", 'Unknown') AS "Gender",
+               ${eventAlias}."PostedOn",
+               ${domain === 'lab'
+            ? `f."FBSValue", f."FBSINTValueId", f."HBA1CValue", f."HBA1CINTValueId",
+                    f."MicroalbuminValue", f."MicroalbuminINTValueId", f."BMDValue", f."BMDINTValueId",
+                    f."PSAValue", f."PSAINTValueId", f."LipidId", f."HepatitisBValueId", f."HepatitisCValueId"`
+            : `o."BreastExamId", o."PAPSmearId", o."ViaVilliId"`}
+        FROM "${sourceTable}" ${eventAlias}
+        JOIN "Clients" c ON ${eventAlias}."ClientId" = c."Id"
+        LEFT JOIN "Categories" cat ON ${eventAlias}."CategoryId" = cat."Id"
+        LEFT JOIN "Stations" s ON ${eventAlias}."StationId" = s."Id"
+        LEFT JOIN "Genders" g ON ${eventAlias}."GenderId" = g."Id"
+        WHERE ${conditions.join(' AND ')}
+      ),
+      observations AS (
+        ${eventRows}
+      ),
+      ranked_observations AS (
+        SELECT observations.*,
+               ROW_NUMBER() OVER (PARTITION BY "ClientId", "Test" ORDER BY "PostedOn" DESC, "EventId" DESC) AS "ClientTestRank"
+        FROM observations
+      ),
+      filtered_observations AS (
+        SELECT * FROM ranked_observations ${resultWhere}
+      )
+      SELECT * FROM filtered_observations
+      ORDER BY "PostedOn" DESC, "EventId" DESC, "Test"
+    `;
+        const result = await pool.query(sql, params);
+        const data = result.rows.map(({ ClientTestRank, ...row }) => row);
+        const eventCount = new Set(data.map(row => row.EventId)).size;
+        const uniqueClients = new Set(data.map(row => row.ClientId)).size;
+        const testNames = selectedTests.map(test => test.label).join(', ');
+        const insight = `Found ${data.length} ${domain} test results (${testNames}) across ${eventCount} screening events and ${uniqueClients} unique clients${latestOnly ? ', showing each client’s latest result per test' : ''}.`;
+        return { data, insight, eventCount, uniqueClients };
+    }
     // Main execution method
-    async executeQuery(query, filters) {
+    async executeQuery(query, filters, domain = 'field') {
         const parsed = this.parseQuery(query);
         const startTime = Date.now();
         let resultData = [];
         let insight = '';
         console.log('🔍 Parsed query:', parsed);
         try {
+            if (domain === 'lab' || domain === 'oncology') {
+                const report = await this.queryClinicalFindings(domain, query, filters);
+                return {
+                    data: report.data,
+                    insight: report.insight,
+                    count: report.data.length,
+                    eventCount: report.eventCount,
+                    uniqueClients: report.uniqueClients,
+                    executionTime: `${Date.now() - startTime}ms`,
+                    parsedIntent: { domain, intent: 'clinical_findings' },
+                };
+            }
             if (parsed.intent === 'consecutive_abnormal') {
                 resultData = await this.queryConsecutiveAbnormal(parsed, filters);
                 insight = `Found ${resultData.length} ${parsed.category || ''} clients with ${parsed.consecutiveCount || 2}+ consecutive abnormal ${parsed.condition} readings. ${resultData.filter(r => r.pattern === 'CONFIRMED_ABNORMAL').length} show confirmed abnormal patterns.`;

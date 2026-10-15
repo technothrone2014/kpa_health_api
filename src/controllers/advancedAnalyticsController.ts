@@ -447,18 +447,25 @@ export const getRBSDistribution = async (req: Request, res: Response) => {
 // Intelligent natural language query with clinical context
 export const intelligentQuery = async (req: Request, res: Response) => {
   try {
-    const { query, filters } = req.body;
+    const { query, filters, domain = 'field' } = req.body;
     
     if (!query) {
       return res.status(400).json({ success: false, error: 'Query is required' });
     }
+
+    if (!['field', 'lab', 'oncology'].includes(domain)) {
+      return res.status(400).json({ success: false, error: 'Invalid analytics domain' });
+    }
     
-    const result = await intelligentQueryService.executeQuery(query, filters);
+    const result = await intelligentQueryService.executeQuery(query, filters, domain);
     
     res.json({
       success: true,
       query,
+      domain,
       count: result.count,
+      eventCount: result.eventCount,
+      uniqueClients: result.uniqueClients,
       executionTime: result.executionTime,
       insight: result.insight,
       data: result.data,
