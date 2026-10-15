@@ -21,7 +21,7 @@ git push -u origin main
 node scripts/migrate-remarks.js
 
 git add .
-git commit -m "EAP api: Optimized backend"
+git commit -m "EAP api: Fixed Whatsapp OTP code issue"
 git push
 
 khalidfathiyah@gmail.com
