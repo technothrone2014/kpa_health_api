@@ -289,8 +289,14 @@ class AuthService {
     async verifyLogin(identifier, otp, ipAddress, userAgent) {
         console.log(`✅ Verifying OTP for: ${identifier}`);
         try {
+            const matchedUser = await this.findUserByIdentifier(identifier);
+            if (!matchedUser) {
+                await (0, auditService_js_1.auditLog)(null, 'OTP_INVALID', 'User', identifier, null, null, ipAddress, userAgent);
+                return { success: false, message: 'Invalid or expired verification code' };
+            }
             // Verify OTP
-            const { valid, userId } = await this.verifyOTP(identifier, otp);
+            // OTPs are stored against the account email, even when login used a phone or username.
+            const { valid, userId } = await this.verifyOTP(matchedUser.Email, otp);
             if (!valid || !userId) {
                 await (0, auditService_js_1.auditLog)(null, 'OTP_INVALID', 'User', identifier, null, null, ipAddress, userAgent);
                 return { success: false, message: 'Invalid or expired verification code' };
