@@ -112,6 +112,7 @@ class ClientAnalyticsService {
           COALESCE(g."Title", 'Unknown') as gender,
           t."Id" as tally_id,
           t."PostedOn" as visit_date,
+          ROW_NUMBER() OVER (PARTITION BY c."Id" ORDER BY t."PostedOn" DESC) as visit_rank,
           TRIM(bp."Title") as bp_status,      -- ← TRIM HERE
           TRIM(bmi."Title") as bmi_status,    -- ← TRIM HERE
           TRIM(rbs."Title") as rbs_status     -- ← TRIM HERE
@@ -143,9 +144,9 @@ class ClientAnalyticsService {
           COUNT(DISTINCT tally_id) as total_visits,
           MAX(visit_date) as last_visit_date,
           -- Get arrays of statuses for each client (most recent first)
-          ARRAY_AGG(bp_status ORDER BY visit_date DESC) as bp_statuses,
-          ARRAY_AGG(bmi_status ORDER BY visit_date DESC) as bmi_statuses,
-          ARRAY_AGG(rbs_status ORDER BY visit_date DESC) as rbs_statuses
+          ARRAY_AGG(bp_status ORDER BY visit_date DESC) FILTER (WHERE visit_rank <= 3) as bp_statuses,
+          ARRAY_AGG(bmi_status ORDER BY visit_date DESC) FILTER (WHERE visit_rank <= 3) as bmi_statuses,
+          ARRAY_AGG(rbs_status ORDER BY visit_date DESC) FILTER (WHERE visit_rank <= 3) as rbs_statuses
         FROM client_visits
         GROUP BY client_id, "FullName", "FirstName", "LastName", "IDNumber", "PhoneNumber", category, station, gender
       )
