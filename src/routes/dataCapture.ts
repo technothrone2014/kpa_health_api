@@ -10,9 +10,8 @@ import {
 import { authMiddleware } from '../middleware/authMiddleware';
 
 import {
-  listConfigItems,
-  createConfigItem,
-  toggleConfigItem,
+  listConfigItems, createConfigItem,
+  updateConfigItem, toggleConfigItem
 } from '../controllers/adminConfigController';
 
 const router = express.Router();
@@ -52,6 +51,7 @@ router.get('/lookups/:type', getLookupValues);
 // ==================== ADMIN CONFIG ====================
 router.get('/admin-config/:type', listConfigItems);
 router.post('/admin-config/:type', createConfigItem);
+router.put('/admin-config/:type/:id', updateConfigItem); 
 router.patch('/admin-config/:type/:id', toggleConfigItem);
 
 export default router;
