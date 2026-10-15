@@ -14,6 +14,41 @@ const auditService_js_1 = require("./auditService.js");
 const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-me-in-production';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 class AuthService {
+    normalizeIdentifier(identifier) {
+        const value = typeof identifier === 'string' ? identifier.trim() : '';
+        if (!value)
+            return { identifier: '', kind: 'username', error: 'Enter an email, username, or Kenyan mobile number.' };
+        if (value.includes('@')) {
+            const [local, domain, ...extra] = value.split('@');
+            const localValid = local.length > 0 && local.length <= 64 &&
+                !local.startsWith('.') && !local.endsWith('.') && !local.includes('..') &&
+                /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(local);
+            const labels = domain?.split('.') || [];
+            const domainValid = domain.length > 0 && domain.length <= 253 &&
+                labels.every(label => label.length <= 63 && /^[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?$/i.test(label));
+            if (extra.length > 0 || !localValid || !domainValid || /\s/.test(value)) {
+                return { identifier: value, kind: 'email', error: 'Enter a valid email address.' };
+            }
+            return { identifier: value.toLowerCase(), kind: 'email' };
+        }
+        if (/^[+\d\s().-]+$/.test(value)) {
+            let digits = value.replace(/\D/g, '');
+            if (digits.startsWith('00'))
+                digits = digits.slice(2);
+            let nationalNumber = digits;
+            if (digits.startsWith('254'))
+                nationalNumber = digits.slice(3);
+            else if (digits.startsWith('0'))
+                nationalNumber = digits.slice(1);
+            if (nationalNumber.startsWith('0'))
+                nationalNumber = nationalNumber.slice(1);
+            if (!/^[17]\d{8}$/.test(nationalNumber)) {
+                return { identifier: value, kind: 'phone', error: 'Enter a valid Kenyan mobile number, such as 0705 172 600 or +254 705 172 600.' };
+            }
+            return { identifier: `+254${nationalNumber}`, kind: 'phone' };
+        }
+        return { identifier: value.toLowerCase(), kind: 'username' };
+    }
     // Generate OTP code
     generateOTP() {
         return otp_generator_1.default.generate(6, {
@@ -53,7 +88,10 @@ class AuthService {
     }
     // Find user by identifier (email, username, or phone number)
     async findUserByIdentifier(identifier) {
-        console.log(`🔍 Finding user with identifier: ${identifier}`);
+        const normalized = this.normalizeIdentifier(identifier);
+        if (normalized.error)
+            return null;
+        console.log(`🔍 Finding user with identifier type: ${normalized.kind}`);
         const startTime = Date.now();
         try {
             const pool = await pool_1.poolPromise;
@@ -62,11 +100,18 @@ class AuthService {
             try {
                 // Set statement timeout for this query
                 await client.query('SET statement_timeout = 10000'); // 10 seconds
+                const phoneDigits = normalized.kind === 'phone' ? normalized.identifier.slice(1) : '';
+                const nationalNumber = phoneDigits.startsWith('254') ? phoneDigits.slice(3) : '';
+                const phoneVariants = normalized.kind === 'phone'
+                    ? [phoneDigits, nationalNumber, `0${nationalNumber}`]
+                    : [];
                 const result = await client.query(`SELECT * FROM "Users" 
-           WHERE ("Email" = $1 OR "UserName" = $1 OR "PhoneNumber" = $1) 
+           WHERE (LOWER(BTRIM(COALESCE("Email", ''))) = $1
+             OR LOWER(BTRIM(COALESCE("UserName", ''))) = $1
+             OR regexp_replace(COALESCE("PhoneNumber", ''), '[^0-9]', '', 'g') = ANY($2::text[]))
            AND "Status" = true
            AND ("LockoutEnd" IS NULL OR "LockoutEnd" < NOW())
-           LIMIT 1`, [identifier.toLowerCase()]);
+           LIMIT 1`, [normalized.identifier, phoneVariants]);
                 console.log(`✅ Query completed in ${Date.now() - startTime}ms`);
                 if (result.rows.length === 0) {
                     console.log(`❌ No user found for: ${identifier}`);

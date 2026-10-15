@@ -43,7 +43,11 @@ const loginWithOTP = async (req, res) => {
                 message: 'Email/Username/Phone is required'
             });
         }
-        const result = await authService_js_1.default.loginWithOTP(identifier, ipAddress, userAgent);
+        const normalized = authService_js_1.default.normalizeIdentifier(identifier);
+        if (normalized.error) {
+            return res.status(400).json({ success: false, message: normalized.error });
+        }
+        const result = await authService_js_1.default.loginWithOTP(normalized.identifier, ipAddress, userAgent);
         if (!result.success) {
             return res.status(401).json(result);
         }
@@ -69,7 +73,11 @@ const verifyOTP = async (req, res) => {
                 message: 'Identifier and OTP are required'
             });
         }
-        const result = await authService_js_1.default.verifyLogin(identifier, otp, ipAddress, userAgent);
+        const normalized = authService_js_1.default.normalizeIdentifier(identifier);
+        if (normalized.error) {
+            return res.status(400).json({ success: false, message: normalized.error });
+        }
+        const result = await authService_js_1.default.verifyLogin(normalized.identifier, otp, ipAddress, userAgent);
         if (!result.success) {
             return res.status(401).json(result);
         }
