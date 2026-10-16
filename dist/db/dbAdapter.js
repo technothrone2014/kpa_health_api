@@ -3,8 +3,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const pg_1 = require("pg");
 const pool_1 = require("./pool");
+const postgresPool_1 = require("./postgresPool");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
 // Detect which database we're using
@@ -21,13 +21,7 @@ class DatabaseAdapter {
             if (!databaseUrl) {
                 throw new Error('DATABASE_URL environment variable is required for PostgreSQL');
             }
-            this.pgPool = new pg_1.Pool({
-                connectionString: databaseUrl,
-                ssl: {
-                    rejectUnauthorized: true,
-                },
-                connectionTimeoutMillis: 10000,
-            });
+            this.pgPool = (0, postgresPool_1.createPostgresPool)(databaseUrl);
             await this.pgPool.connect();
             console.log('✅ Connected to PostgreSQL via dbAdapter');
         }

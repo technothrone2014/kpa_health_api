@@ -7,8 +7,8 @@ exports.dbSql = exports.poolPromise = void 0;
 // kpa_health_api/src/db/pool.ts
 const mssql_1 = __importDefault(require("mssql"));
 exports.dbSql = mssql_1.default;
-const pg_1 = require("pg");
 const dotenv_1 = __importDefault(require("dotenv"));
+const postgresPool_1 = require("./postgresPool");
 dotenv_1.default.config();
 const DB_TYPE = process.env.DB_TYPE || "sqlserver";
 // Declare variables outside the conditional blocks
@@ -22,15 +22,7 @@ if (DB_TYPE === "postgresql") {
         console.error("❌ DATABASE_URL environment variable is required for PostgreSQL connection");
         throw new Error("DATABASE_URL is required");
     }
-    // Create a connection pool with explicit SSL configuration
-    const pgPool = new pg_1.Pool({
-        connectionString: databaseUrl,
-        ssl: {
-            rejectUnauthorized: true,
-        },
-        // Increase connection timeout for Render
-        connectionTimeoutMillis: 10000,
-    });
+    const pgPool = (0, postgresPool_1.createPostgresPool)(databaseUrl);
     console.log("📌 Connecting to PostgreSQL with SSL enabled...");
     exports.poolPromise = poolPromise = pgPool
         .connect()

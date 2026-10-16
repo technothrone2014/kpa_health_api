@@ -1,8 +1,8 @@
 // kpa_health_api/src/db/pool.ts
 import sql from "mssql";
-import { Pool as PgPool } from "pg";
 import dotenv from "dotenv";
 import type { config } from "mssql";
+import { createPostgresPool } from "./postgresPool";
 
 dotenv.config();
 
@@ -22,15 +22,7 @@ if (DB_TYPE === "postgresql") {
     throw new Error("DATABASE_URL is required");
   }
   
-  // Create a connection pool with explicit SSL configuration
-  const pgPool = new PgPool({
-    connectionString: databaseUrl,
-    ssl: {
-      rejectUnauthorized: true,
-    },
-    // Increase connection timeout for Render
-    connectionTimeoutMillis: 10000,
-  });
+  const pgPool = createPostgresPool(databaseUrl);
 
   console.log("📌 Connecting to PostgreSQL with SSL enabled...");
   

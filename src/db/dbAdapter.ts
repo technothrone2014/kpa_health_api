@@ -1,7 +1,7 @@
 // kpa_health_api/src/db/dbAdapter.ts
 import sql, { ConnectionPool } from 'mssql';
-import { Pool as PgPool } from 'pg';
 import { poolPromise as sqlServerPool } from './pool';
+import { createPostgresPool } from './postgresPool';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -10,7 +10,7 @@ dotenv.config();
 const DB_TYPE = process.env.DB_TYPE || 'sqlserver'; // 'sqlserver' or 'postgresql'
 
 class DatabaseAdapter {
-  private pgPool: PgPool | null = null;
+  private pgPool: ReturnType<typeof createPostgresPool> | null = null;
   private sqlPool: ConnectionPool | null = null;
 
   async connect() {
@@ -21,13 +21,7 @@ class DatabaseAdapter {
         throw new Error('DATABASE_URL environment variable is required for PostgreSQL');
       }
       
-      this.pgPool = new PgPool({
-        connectionString: databaseUrl,
-        ssl: {
-          rejectUnauthorized: true,
-        },
-        connectionTimeoutMillis: 10000,
-      });
+      this.pgPool = createPostgresPool(databaseUrl);
       
       await this.pgPool.connect();
       console.log('✅ Connected to PostgreSQL via dbAdapter');

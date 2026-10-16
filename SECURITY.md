@@ -11,7 +11,7 @@
 - The frontend uses the HTTPS API endpoint by default and rejects an explicitly configured `http://` API URL in production builds.
 - Both the frontend and API are deployed as Render web services. Production transport security relies on Render TLS/HTTPS at the service endpoints (TLS terminates at Render's edge); deployment owners must keep both public URLs on HTTPS and verify that HTTP is redirected or unavailable.
 - Local development may use localhost HTTP. Do not use unencrypted HTTP for non-local environments.
-- PostgreSQL connections require SSL with certificate validation enabled in both database connection paths.
+- PostgreSQL connections require SSL with certificate validation enabled in both database connection paths; connection strings are normalized to `sslmode=verify-full`.
 - SQL Server connections are encrypted by default and validate the server certificate by default. The development-only override `DB_TRUST_SERVER_CERTIFICATE=true` disables certificate validation and must not be used in production.
 
 ### Authentication and authorization
@@ -31,7 +31,7 @@
 ### Secrets and configuration
 
 - Environment files are ignored by Git; `.env.example` contains variable names and placeholders only.
-- Deployment configuration declares `DATABASE_URL` and `JWT_SECRET` as externally supplied secrets (`sync: false`).
+- Deployment configuration declares `DATABASE_URL` as an externally supplied secret and asks Render to generate `JWT_SECRET` as a random 256-bit value when it is not already configured.
 - A private local `JWT_SECRET` is configured in the ignored development `.env`; it is not a production secret.
 - Database and mail credential files were removed from the working tree. Their previous Git history may still contain credentials; treat those credentials as exposed until rotated.
 
@@ -39,7 +39,7 @@
 
 Before production release or certification review:
 
-1. Set a unique, cryptographically random `JWT_SECRET` of at least 32 bytes in Render's secret settings. Do not use the development value or commit production secrets. Rotation invalidates existing tokens.
+1. Confirm Render has a unique, cryptographically random `JWT_SECRET` of at least 32 bytes. The Blueprint generates a 256-bit value when missing; verify it exists after syncing. Do not use the development value or commit production secrets. Rotation invalidates existing tokens.
 2. Rotate database and mail credentials previously present in tracked environment files. Review Git history with repository administrators and clean it according to repository policy after rotation.
 3. Confirm both Render service URLs use HTTPS, HTTP redirects to HTTPS or is unavailable, and the frontend's `VITE_API_URL` points to the HTTPS API URL.
 4. Keep `DB_TRUST_SERVER_CERTIFICATE` unset or `false` in production; confirm database provider certificates and TLS configuration remain valid.
