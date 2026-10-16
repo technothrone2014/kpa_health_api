@@ -11,7 +11,7 @@
 - The frontend uses the HTTPS API endpoint by default and rejects an explicitly configured `http://` API URL in production builds.
 - Both the frontend and API are deployed as Render web services. Production transport security relies on Render TLS/HTTPS at the service endpoints (TLS terminates at Render's edge); deployment owners must keep both public URLs on HTTPS and verify that HTTP is redirected or unavailable.
 - Local development may use localhost HTTP. Do not use unencrypted HTTP for non-local environments.
-- PostgreSQL connections require SSL with certificate validation enabled in both database connection paths; connection strings are normalized to `sslmode=verify-full`.
+- PostgreSQL connections require TLS in both database connection paths. Certificate verification defaults to `verify-full`; for Render's same-region internal Postgres URL, Render requires `sslmode=require` because its internal TLS certificate is self-signed. This still requires encryption and disallows plaintext fallback, but does not authenticate the database certificate.
 - SQL Server connections are encrypted by default and validate the server certificate by default. The development-only override `DB_TRUST_SERVER_CERTIFICATE=true` disables certificate validation and must not be used in production.
 
 ### Authentication and authorization
@@ -42,7 +42,7 @@ Before production release or certification review:
 1. Confirm Render has a unique, cryptographically random `JWT_SECRET` of at least 32 bytes. The Blueprint generates a 256-bit value when missing; verify it exists after syncing. Do not use the development value or commit production secrets. Rotation invalidates existing tokens.
 2. Rotate database and mail credentials previously present in tracked environment files. Review Git history with repository administrators and clean it according to repository policy after rotation.
 3. Confirm both Render service URLs use HTTPS, HTTP redirects to HTTPS or is unavailable, and the frontend's `VITE_API_URL` points to the HTTPS API URL.
-4. Keep `DB_TRUST_SERVER_CERTIFICATE` unset or `false` in production; confirm database provider certificates and TLS configuration remain valid.
+4. For Render's internal Postgres URL, use `PGSSLMODE=require` as configured by the Blueprint. For a database endpoint with a publicly trusted certificate, use `PGSSLMODE=verify-full`. Keep `DB_TRUST_SERVER_CERTIFICATE` unset or `false` in production; confirm database provider TLS configuration remains valid.
 5. Review administrator assignments and confirm that access to health data is appropriate. Current patient and analytics route protection requires authentication but does not itself implement per-record, station, or patient-scope authorization.
 6. Maintain credential rotation, access review, security monitoring, vulnerability management, backups, and tested incident-response procedures.
 
