@@ -7,7 +7,9 @@ const express_1 = __importDefault(require("express"));
 const analyticsController_1 = require("../controllers/analyticsController");
 const advancedAnalyticsController_1 = require("../controllers/advancedAnalyticsController");
 const analyticsController_2 = require("../controllers/analyticsController");
+const authMiddleware_1 = require("../middleware/authMiddleware");
 const router = express_1.default.Router();
+router.use(authMiddleware_1.authMiddleware);
 // Client summary endpoints
 router.get('/clients/category', analyticsController_1.getClientsPerCategory);
 router.get('/clients/category-gender', analyticsController_1.getClientsPerCategoryPerGender);

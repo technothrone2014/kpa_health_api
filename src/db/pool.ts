@@ -26,7 +26,7 @@ if (DB_TYPE === "postgresql") {
   const pgPool = new PgPool({
     connectionString: databaseUrl,
     ssl: {
-      rejectUnauthorized: false, // Accept self-signed certificates
+      rejectUnauthorized: true,
     },
     // Increase connection timeout for Render
     connectionTimeoutMillis: 10000,
@@ -69,8 +69,8 @@ else {
     port: Number(process.env.DB_PORT) || 1433,
     database: process.env.DB_NAME,
     options: { 
-      encrypt: false, 
-      trustServerCertificate: true,
+      encrypt: process.env.DB_ENCRYPT !== "false",
+      trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE === "true",
       enableArithAbort: true
     },
     connectionTimeout: 30000,

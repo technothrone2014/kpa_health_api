@@ -35,7 +35,7 @@ router.get('/lookups/interpret/:type', dataCaptureController_1.interpretLookupVa
 router.get('/lookups/:type', dataCaptureController_1.getLookupValues);
 // ==================== ADMIN CONFIG ====================
 router.get('/admin-config/:type', adminConfigController_1.listConfigItems);
-router.post('/admin-config/:type', adminConfigController_1.createConfigItem);
-router.put('/admin-config/:type/:id', adminConfigController_1.updateConfigItem);
-router.patch('/admin-config/:type/:id', adminConfigController_1.toggleConfigItem);
+router.post('/admin-config/:type', authMiddleware_1.adminMiddleware, adminConfigController_1.createConfigItem);
+router.put('/admin-config/:type/:id', authMiddleware_1.adminMiddleware, adminConfigController_1.updateConfigItem);
+router.patch('/admin-config/:type/:id', authMiddleware_1.adminMiddleware, adminConfigController_1.toggleConfigItem);
 exports.default = router;

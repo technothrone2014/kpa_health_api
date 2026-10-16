@@ -6,16 +6,17 @@ import {
   initWhatsApp,
   resetWhatsAppSession,
 } from '../services/whatsappService.js';
+import { adminMiddleware, authMiddleware } from '../middleware/authMiddleware';
 
 const router = express.Router();
 
 // GET /api/v1/whatsapp/status — JSON status
-router.get('/status', (_req, res) => {
+router.get('/status', authMiddleware, (_req, res) => {
   res.json({ success: true, ...getWhatsAppStatus() });
 });
 
 // GET /api/v1/whatsapp/qr — HTML page with scannable QR
-router.get('/qr', (_req, res) => {
+router.get('/qr', authMiddleware, adminMiddleware, (_req, res) => {
   const qr = getLatestQrDataUrl();
 
   if (!qr) {
@@ -53,7 +54,7 @@ router.get('/qr', (_req, res) => {
 });
 
 // POST /api/v1/whatsapp/reconnect — nudge a fresh connection attempt
-router.post('/reconnect', async (_req, res) => {
+router.post('/reconnect', authMiddleware, adminMiddleware, async (_req, res) => {
   try {
     await initWhatsApp();
     res.json({ success: true, message: 'Reconnect triggered' });
@@ -63,7 +64,7 @@ router.post('/reconnect', async (_req, res) => {
 });
 
 // POST /api/v1/whatsapp/reset — wipe session (dev only)
-router.post('/reset', async (_req, res) => {
+router.post('/reset', authMiddleware, adminMiddleware, async (_req, res) => {
   try {
     await resetWhatsAppSession();
     await initWhatsApp();

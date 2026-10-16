@@ -11,6 +11,7 @@ import { testEmailConnection } from './services/emailService.js';
 import { initWhatsApp } from './services/whatsappService.js';
 
 import { errorHandler } from "./middleware/errorHandler";
+import { adminMiddleware, authMiddleware } from "./middleware/authMiddleware";
 import logger from "./utils/logger";
 
 import dataCorrectionRoutes from "./routes/dataCorrection";
@@ -137,7 +138,7 @@ app.use("/api/v1/users", usersRoutes);
 app.use('/api/v1', dataCaptureRouter);
 
 // Email test route
-app.get('/api/v1/email/test', async (_req, res) => {
+app.get('/api/v1/email/test', authMiddleware, adminMiddleware, async (_req, res) => {
   const result = await testEmailConnection();
   res.json(result);
 });

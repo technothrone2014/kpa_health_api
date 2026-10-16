@@ -117,10 +117,33 @@ export const exportReport = async (req: Request, res: Response) => {
   try {
     const pool = await poolPromise;
     const { format = 'json', startDate, endDate, type = 'summary' } = req.query;
+    const isValidDate = (value: unknown): value is string =>
+      typeof value === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+      !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)) &&
+      new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
+
+    if ((startDate !== undefined && !isValidDate(startDate)) ||
+        (endDate !== undefined && !isValidDate(endDate))) {
+      return res.status(400).json({ error: 'Dates must use the valid YYYY-MM-DD format' });
+    }
+    if (startDate && endDate && startDate > endDate) {
+      return res.status(400).json({ error: 'startDate must not be later than endDate' });
+    }
     
     let data: any[] = [];
     
     if (type === 'summary') {
+      const dateFilters: string[] = [];
+      const dateParams: string[] = [];
+      if (startDate) {
+        dateParams.push(startDate as string);
+        dateFilters.push(`AND t."PostedOn" >= $${dateParams.length}::date`);
+      }
+      if (endDate) {
+        dateParams.push(endDate as string);
+        dateFilters.push(`AND t."PostedOn" < $${dateParams.length}::date + INTERVAL '1 day'`);
+      }
       const result = await pool.query(`
         SELECT 
           DATE(t."PostedOn") as date,
@@ -137,11 +160,10 @@ export const exportReport = async (req: Request, res: Response) => {
         JOIN "BPINTValues" bp ON t."BPINTValueId" = bp."Id"
         JOIN "BMIINTValues" bmi ON t."BMIINTValueId" = bmi."Id"
         WHERE t."Deleted" = false
-        ${startDate ? `AND t."PostedOn" >= '${startDate}'` : ''}
-        ${endDate ? `AND t."PostedOn" <= '${endDate}'` : ''}
+        ${dateFilters.join('\n        ')}
         GROUP BY DATE(t."PostedOn")
         ORDER BY date DESC
-      `);
+      `, dateParams);
       data = result.rows;
     }
     

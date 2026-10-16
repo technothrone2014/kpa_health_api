@@ -24,7 +24,7 @@ class DatabaseAdapter {
       this.pgPool = new PgPool({
         connectionString: databaseUrl,
         ssl: {
-          rejectUnauthorized: false, // Accept self-signed certificates for Render
+          rejectUnauthorized: true,
         },
         connectionTimeoutMillis: 10000,
       });

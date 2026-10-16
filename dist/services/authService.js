@@ -11,7 +11,10 @@ const pool_1 = require("../db/pool");
 const whatsappService_js_1 = require("./whatsappService.js");
 const emailService_js_1 = require("./emailService.js");
 const auditService_js_1 = require("./auditService.js");
-const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-me-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || Buffer.byteLength(JWT_SECRET, 'utf8') < 32) {
+    throw new Error('JWT_SECRET must be configured with at least 32 bytes of random data');
+}
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 class AuthService {
     normalizeIdentifier(identifier) {
@@ -69,7 +72,7 @@ class AuthService {
     // Generate JWT tokens
     generateTokens(userId, email, roles) {
         const payload = { userId, email, roles };
-        const secret = String(JWT_SECRET);
+        const secret = JWT_SECRET;
         const expiresIn = String(JWT_EXPIRES_IN);
         const token = jsonwebtoken_1.default.sign(payload, secret, { expiresIn });
         const refreshToken = jsonwebtoken_1.default.sign(payload, secret, { expiresIn: '30d' });
@@ -78,7 +81,7 @@ class AuthService {
     // Verify JWT token
     verifyToken(token) {
         try {
-            const secret = String(JWT_SECRET);
+            const secret = JWT_SECRET;
             return jsonwebtoken_1.default.verify(token, secret);
         }
         catch (error) {

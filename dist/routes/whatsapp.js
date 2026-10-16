@@ -6,13 +6,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // kpa_health_api/src/routes/whatsapp.ts
 const express_1 = __importDefault(require("express"));
 const whatsappService_js_1 = require("../services/whatsappService.js");
+const authMiddleware_1 = require("../middleware/authMiddleware");
 const router = express_1.default.Router();
 // GET /api/v1/whatsapp/status — JSON status
-router.get('/status', (_req, res) => {
+router.get('/status', authMiddleware_1.authMiddleware, (_req, res) => {
     res.json({ success: true, ...(0, whatsappService_js_1.getWhatsAppStatus)() });
 });
 // GET /api/v1/whatsapp/qr — HTML page with scannable QR
-router.get('/qr', (_req, res) => {
+router.get('/qr', authMiddleware_1.authMiddleware, authMiddleware_1.adminMiddleware, (_req, res) => {
     const qr = (0, whatsappService_js_1.getLatestQrDataUrl)();
     if (!qr) {
         return res.status(200).send(`<!DOCTYPE html>
@@ -47,7 +48,7 @@ router.get('/qr', (_req, res) => {
     </html>`);
 });
 // POST /api/v1/whatsapp/reconnect — nudge a fresh connection attempt
-router.post('/reconnect', async (_req, res) => {
+router.post('/reconnect', authMiddleware_1.authMiddleware, authMiddleware_1.adminMiddleware, async (_req, res) => {
     try {
         await (0, whatsappService_js_1.initWhatsApp)();
         res.json({ success: true, message: 'Reconnect triggered' });
@@ -57,7 +58,7 @@ router.post('/reconnect', async (_req, res) => {
     }
 });
 // POST /api/v1/whatsapp/reset — wipe session (dev only)
-router.post('/reset', async (_req, res) => {
+router.post('/reset', authMiddleware_1.authMiddleware, authMiddleware_1.adminMiddleware, async (_req, res) => {
     try {
         await (0, whatsappService_js_1.resetWhatsAppSession)();
         await (0, whatsappService_js_1.initWhatsApp)();

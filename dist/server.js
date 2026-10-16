@@ -13,6 +13,7 @@ const cors_1 = __importDefault(require("cors"));
 const emailService_js_1 = require("./services/emailService.js");
 const whatsappService_js_1 = require("./services/whatsappService.js");
 const errorHandler_1 = require("./middleware/errorHandler");
+const authMiddleware_1 = require("./middleware/authMiddleware");
 const logger_1 = __importDefault(require("./utils/logger"));
 const dataCorrection_1 = __importDefault(require("./routes/dataCorrection"));
 const dataCapture_1 = __importDefault(require("./routes/dataCapture"));
@@ -116,7 +117,7 @@ app.use("/api/v1/users", users_1.default);
 // Data capture routes
 app.use('/api/v1', dataCapture_1.default);
 // Email test route
-app.get('/api/v1/email/test', async (_req, res) => {
+app.get('/api/v1/email/test', authMiddleware_1.authMiddleware, authMiddleware_1.adminMiddleware, async (_req, res) => {
     const result = await (0, emailService_js_1.testEmailConnection)();
     res.json(result);
 });

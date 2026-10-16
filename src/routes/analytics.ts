@@ -42,8 +42,11 @@ import {
 } from '../controllers/advancedAnalyticsController';
 
 import { getGenderDistribution } from '../controllers/analyticsController';
+import { authMiddleware } from '../middleware/authMiddleware';
 
 const router = express.Router();
+
+router.use(authMiddleware);
 
 // Client summary endpoints
 router.get('/clients/category', getClientsPerCategory);

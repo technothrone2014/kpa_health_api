@@ -10,7 +10,10 @@ import { sendWhatsAppOTP } from './whatsappService.js';
 import { sendEmailOTP } from './emailService.js';
 import { auditLog } from './auditService.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-me-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || Buffer.byteLength(JWT_SECRET, 'utf8') < 32) {
+  throw new Error('JWT_SECRET must be configured with at least 32 bytes of random data');
+}
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 export interface User {
@@ -97,7 +100,7 @@ class AuthService {
   // Generate JWT tokens
   generateTokens(userId: number, email: string, roles: string[]): { token: string; refreshToken: string } {
     const payload = { userId, email, roles };
-    const secret = String(JWT_SECRET);
+    const secret = JWT_SECRET;
     const expiresIn = String(JWT_EXPIRES_IN);
     
     const token = jwt.sign(payload, secret, { expiresIn } as jwt.SignOptions);
@@ -109,7 +112,7 @@ class AuthService {
   // Verify JWT token
   verifyToken(token: string): any {
     try {
-      const secret = String(JWT_SECRET);
+      const secret = JWT_SECRET;
       return jwt.verify(token, secret);
     } catch (error) {
       console.error('Token verification failed:', error);

@@ -7,7 +7,7 @@ import {
   updateClient, getClientTallies, getClientFindings,
   getClientOncologies
 } from '../controllers/dataCaptureController';
-import { authMiddleware } from '../middleware/authMiddleware';
+import { adminMiddleware, authMiddleware } from '../middleware/authMiddleware';
 
 import {
   listConfigItems, createConfigItem,
@@ -50,8 +50,8 @@ router.get('/lookups/:type', getLookupValues);
 
 // ==================== ADMIN CONFIG ====================
 router.get('/admin-config/:type', listConfigItems);
-router.post('/admin-config/:type', createConfigItem);
-router.put('/admin-config/:type/:id', updateConfigItem); 
-router.patch('/admin-config/:type/:id', toggleConfigItem);
+router.post('/admin-config/:type', adminMiddleware, createConfigItem);
+router.put('/admin-config/:type/:id', adminMiddleware, updateConfigItem);
+router.patch('/admin-config/:type/:id', adminMiddleware, toggleConfigItem);
 
 export default router;
