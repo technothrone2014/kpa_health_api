@@ -524,7 +524,7 @@ class AuthService {
       
       try {
         const result = await client.query(
-          `SELECT "Id", "FirstName", "LastName", "Email", "UserName", "PhoneNumber", "Status"
+          `SELECT "Id", "FirstName", "LastName", "Email", "UserName", "PhoneNumber", "Status", "StationId"
           FROM "Users" WHERE "Id" = $1`,
           [userId]
         );

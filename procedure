@@ -29,3 +29,6 @@ patiencekalume@gmail.com
 
 https://kpa-health-api.onrender.com/api/v1/whatsapp/qr
 https://kpa-health-api.onrender.com/api/v1/whatsapp/status
+
+generate JWT_SECRET:
+via node -e "process.stdout.write(require('node:crypto').randomBytes(48).toString('base64'))"

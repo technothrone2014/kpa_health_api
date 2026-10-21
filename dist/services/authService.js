@@ -425,7 +425,7 @@ class AuthService {
             const pool = await pool_1.poolPromise;
             const client = await pool.connect();
             try {
-                const result = await client.query(`SELECT "Id", "FirstName", "LastName", "Email", "UserName", "PhoneNumber", "Status"
+                const result = await client.query(`SELECT "Id", "FirstName", "LastName", "Email", "UserName", "PhoneNumber", "Status", "StationId"
           FROM "Users" WHERE "Id" = $1`, [userId]);
                 if (result.rows.length === 0) {
                     return null;

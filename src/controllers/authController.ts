@@ -173,6 +173,7 @@ export const getCurrentUser = async (req: Request, res: Response) => {
         LastName: user.LastName,
         PhoneNumber: user.PhoneNumber,
         UserName: user.UserName,
+        StationId: user.StationId,
         roles: user.roles || []
       }
     });

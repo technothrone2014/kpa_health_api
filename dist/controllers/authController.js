@@ -155,6 +155,7 @@ const getCurrentUser = async (req, res) => {
                 LastName: user.LastName,
                 PhoneNumber: user.PhoneNumber,
                 UserName: user.UserName,
+                StationId: user.StationId,
                 roles: user.roles || []
             }
         });
