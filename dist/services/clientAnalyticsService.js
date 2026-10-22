@@ -11,7 +11,7 @@ class ClientAnalyticsService {
             params.push(filters.startDate);
         }
         if (filters.endDate) {
-            conditions.push(`t."PostedOn" <= $${params.length + 1}`);
+            conditions.push(`t."PostedOn" < $${params.length + 1}::date + INTERVAL '1 day'`);
             params.push(filters.endDate);
         }
         if (filters.category && filters.category !== 'all') {
@@ -298,6 +298,7 @@ class ClientAnalyticsService {
       LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
       WHERE t."Deleted" = false AND t."Status" = true
         AND c."Deleted" = false
+        AND c."Status" = true
         ${whereClause}
     `, params);
         const totalVisits = parseInt(totalVisitsResult.rows[0]?.total_visits || '0');

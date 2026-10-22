@@ -970,7 +970,7 @@ export const getParticipationByPeriods = async (req: Request, res: Response) => 
       params.push(startDate);
     }
     if (endDate && endDate !== '') {
-      whereClause += ` AND t."PostedOn" <= $${paramIndex++}`;
+      whereClause += ` AND t."PostedOn" < $${paramIndex++}::date + INTERVAL '1 day'`;
       params.push(endDate);
     }
     if (category && category !== 'all') {
@@ -987,11 +987,10 @@ export const getParticipationByPeriods = async (req: Request, res: Response) => 
     }
     
     const query = `
-      WITH daily_tallies AS (
+      WITH filtered_tallies AS (
         SELECT 
-          DATE(t."PostedOn") as screening_date,
-          COUNT(*) as tally_count,
-          COUNT(DISTINCT c."Id") as unique_clients
+          DATE(t."PostedOn") AS screening_date,
+          c."Id" AS client_id
         FROM "Tallies" t
         JOIN "Clients" c ON t."ClientId" = c."Id"
         JOIN "Categories" cat ON c."CategoryId" = cat."Id"
@@ -1002,8 +1001,14 @@ export const getParticipationByPeriods = async (req: Request, res: Response) => 
           AND c."Deleted" = false
           AND c."Status" = true
           ${whereClause}
-        GROUP BY DATE(t."PostedOn")
-        ORDER BY screening_date
+      ),
+      daily_tallies AS (
+        SELECT
+          screening_date,
+          COUNT(*) AS tally_count,
+          COUNT(DISTINCT client_id) AS unique_clients
+        FROM filtered_tallies
+        GROUP BY screening_date
       ),
       with_gaps AS (
         SELECT 
@@ -1025,29 +1030,73 @@ export const getParticipationByPeriods = async (req: Request, res: Response) => 
           unique_clients,
           SUM(new_period_flag) OVER (ORDER BY screening_date) as period_id
         FROM with_gaps
+      ),
+      period_stats AS (
+        SELECT 
+          period_id,
+          MIN(screening_date) as period_start,
+          MAX(screening_date) as period_end,
+          TO_CHAR(MIN(screening_date), 'Mon YYYY') || 
+            CASE WHEN EXTRACT(MONTH FROM MIN(screening_date)) != EXTRACT(MONTH FROM MAX(screening_date))
+                 THEN ' - ' || TO_CHAR(MAX(screening_date), 'Mon YYYY')
+                 ELSE ''
+            END as period_label,
+          SUM(tally_count) as total_tallies,
+          COUNT(*) as screening_days,
+          ROUND(AVG(tally_count), 1) as avg_daily_tallies,
+          EXTRACT(YEAR FROM MIN(screening_date)) as year
+        FROM period_groups
+        GROUP BY period_id
+        HAVING COUNT(*) >= 2
       )
       SELECT 
-        period_id,
-        MIN(screening_date) as period_start,
-        MAX(screening_date) as period_end,
-        TO_CHAR(MIN(screening_date), 'Mon YYYY') || 
-          CASE WHEN EXTRACT(MONTH FROM MIN(screening_date)) != EXTRACT(MONTH FROM MAX(screening_date))
-               THEN ' - ' || TO_CHAR(MAX(screening_date), 'Mon YYYY')
-               ELSE ''
-          END as period_label,
-        SUM(tally_count) as total_tallies,
-        SUM(unique_clients) as total_unique_clients,
-        COUNT(*) as screening_days,
-        ROUND(AVG(tally_count), 1) as avg_daily_tallies,
-        EXTRACT(YEAR FROM MIN(screening_date)) as year
-      FROM period_groups
-      GROUP BY period_id
-      HAVING COUNT(*) >= 2
-      ORDER BY period_start
+        ps.period_id,
+        ps.period_start,
+        ps.period_end,
+        ps.period_label,
+        ps.total_tallies,
+        COUNT(DISTINCT ft.client_id) as total_unique_clients,
+        ps.screening_days,
+        ps.avg_daily_tallies,
+        ps.year
+      FROM period_stats ps
+      JOIN filtered_tallies ft
+        ON ft.screening_date BETWEEN ps.period_start AND ps.period_end
+      GROUP BY
+        ps.period_id,
+        ps.period_start,
+        ps.period_end,
+        ps.period_label,
+        ps.total_tallies,
+        ps.screening_days,
+        ps.avg_daily_tallies,
+        ps.year
+      ORDER BY ps.period_start
     `;
     
-    const result = await pool.query(query, params);
-    res.json({ success: true, data: result.rows });
+    const distinctClientsQuery = `
+      SELECT COUNT(DISTINCT c."Id") AS total_unique_clients
+      FROM "Tallies" t
+      JOIN "Clients" c ON t."ClientId" = c."Id"
+      JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+      LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
+      WHERE t."Deleted" = false
+        AND t."Status" = true
+        AND c."Deleted" = false
+        AND c."Status" = true
+        ${whereClause}
+    `;
+    
+    const [result, distinctClientsResult] = await Promise.all([
+      pool.query(query, params),
+      pool.query(distinctClientsQuery, params)
+    ]);
+    res.json({
+      success: true,
+      data: result.rows,
+      totalUniqueClients: parseInt(distinctClientsResult.rows[0]?.total_unique_clients || '0', 10)
+    });
   } catch (error) {
     console.error('Error in getParticipationByPeriods:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
@@ -1069,7 +1118,7 @@ export const getParticipationDaily = async (req: Request, res: Response) => {
       params.push(startDate);
     }
     if (endDate && endDate !== '') {
-      whereClause += ` AND t."PostedOn" <= $${paramIndex++}`;
+      whereClause += ` AND t."PostedOn" < $${paramIndex++}::date + INTERVAL '1 day'`;
       params.push(endDate);
     }
     if (category && category !== 'all') {
@@ -1105,8 +1154,29 @@ export const getParticipationDaily = async (req: Request, res: Response) => {
       ORDER BY screening_date
     `;
     
-    const result = await pool.query(query, params);
-    res.json({ success: true, data: result.rows });
+    const distinctClientsQuery = `
+      SELECT COUNT(DISTINCT c."Id") AS total_unique_clients
+      FROM "Tallies" t
+      JOIN "Clients" c ON t."ClientId" = c."Id"
+      JOIN "Categories" cat ON c."CategoryId" = cat."Id"
+      LEFT JOIN "Stations" s ON c."StationId" = s."Id"
+      LEFT JOIN "Genders" g ON c."GenderId" = g."Id"
+      WHERE t."Deleted" = false
+        AND t."Status" = true
+        AND c."Deleted" = false
+        AND c."Status" = true
+        ${whereClause}
+    `;
+    
+    const [result, distinctClientsResult] = await Promise.all([
+      pool.query(query, params),
+      pool.query(distinctClientsQuery, params)
+    ]);
+    res.json({
+      success: true,
+      data: result.rows,
+      totalUniqueClients: parseInt(distinctClientsResult.rows[0]?.total_unique_clients || '0', 10)
+    });
   } catch (error) {
     console.error('Error in getParticipationDaily:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
